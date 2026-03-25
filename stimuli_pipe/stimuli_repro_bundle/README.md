@@ -5,6 +5,7 @@ This folder contains the files needed to reproduce the ALICE stimuli generation 
 ## Included
 
 - `fixed_blender_centering_alice_texture.py`
+- `add_test_object_3_different_shape.py`
 - `run_blender.sh`
 - `scripts/stl_spin_render.py`
 - `scripts/stl_material_overlay_render.py`
@@ -70,3 +71,18 @@ bash ./run_blender.sh -b -P fixed_blender_centering_alice_texture.py -- \
   - `reference_image.png`
   - `test_object_1.png`
   - `test_object_2.png`
+  - `test_object_3.png` (different shape from `data/random_stl`, same material recipe as `test_object_1`)
+
+## Add the third test object
+
+After `stimuli_per_stl_packages` exists, run:
+
+```bash
+bash ./run_blender.sh -b -P add_test_object_3_different_shape.py
+```
+
+This updates:
+
+- `stimuli_per_stl_packages/stimuli_B_controlled_simple/*/test_object_3.png`
+- `stimuli_per_stl_packages/stimuli_A_auto_contrast/*/test_object_3.png`
+- both package manifests to include `test_object_3` column.

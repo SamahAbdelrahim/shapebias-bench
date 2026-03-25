@@ -24,4 +24,5 @@ shapebias-bench/
   │   │   │   └── tinyllava.py
   │   │   └── provider_models/
   │   │       ├── __init__.py
+  ├── stimuli_pipe/
 ```
