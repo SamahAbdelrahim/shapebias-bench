@@ -1,17 +1,17 @@
-"""Qwen3-VL wrappers for shape-bias evaluation."""
+"""Qwen3.5 natively-multimodal wrappers for shape-bias evaluation."""
 
 from __future__ import annotations
 
 import torch
 from PIL import Image
-from transformers import AutoModelForImageTextToText, AutoProcessor
+from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
 
 from ..base import BaseVLM, ModelResponse
 from .. import register_model
 
 
-class _Qwen3VLBase(BaseVLM):
-    """Shared loading/inference logic for Qwen3-VL vision-language models."""
+class _Qwen35Base(BaseVLM):
+    """Shared loading/inference logic for Qwen3.5 vision-language models."""
 
     _default_model_id: str  # set by subclasses
 
@@ -25,7 +25,7 @@ class _Qwen3VLBase(BaseVLM):
         self._model_id = model_id
         self._device = device
         self._processor = AutoProcessor.from_pretrained(model_id)
-        self._model = AutoModelForImageTextToText.from_pretrained(
+        self._model = Qwen3_5ForConditionalGeneration.from_pretrained(
             model_id,
             torch_dtype=torch.bfloat16,
             device_map=device,
@@ -55,6 +55,7 @@ class _Qwen3VLBase(BaseVLM):
             tokenize=True,
             return_dict=True,
             return_tensors="pt",
+            chat_template_kwargs={"enable_thinking": False},
         ).to(self._model.device)
 
         input_len = inputs["input_ids"].shape[1]
@@ -89,15 +90,15 @@ class _Qwen3VLBase(BaseVLM):
         torch.cuda.empty_cache()
 
 
-@register_model("qwen3-vl-2b")
-class Qwen3VL_2B(_Qwen3VLBase):
-    """Qwen3-VL 2B Instruct wrapper."""
+@register_model("qwen3.5-0.8b")
+class Qwen35_08B(_Qwen35Base):
+    """Qwen3.5-0.8B wrapper."""
 
-    _default_model_id = "Qwen/Qwen3-VL-2B-Instruct"
+    _default_model_id = "Qwen/Qwen3.5-0.8B"
 
 
-@register_model("qwen3-vl-4b")
-class Qwen3VL_4B(_Qwen3VLBase):
-    """Qwen3-VL 4B Instruct wrapper."""
+@register_model("qwen3.5-4b")
+class Qwen35_4B(_Qwen35Base):
+    """Qwen3.5-4B wrapper."""
 
-    _default_model_id = "Qwen/Qwen3-VL-4B-Instruct"
+    _default_model_id = "Qwen/Qwen3.5-4B"

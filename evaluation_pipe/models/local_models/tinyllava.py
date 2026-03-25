@@ -1,5 +1,10 @@
 """TinyLLaVA wrapper for shape-bias evaluation.
 
+DEPRECATED: TinyLLaVA's custom HuggingFace model code is incompatible with
+the current transformers version (SigLIP architecture mismatch causes CUDA
+errors at inference time). This module is kept for reference but is not
+imported by default.
+
 TinyLLaVA only supports single-image input. For the 2AFC paradigm we compose
 all images into a horizontal collage before sending them to the model.
 """
@@ -7,15 +12,50 @@ all images into a horizontal collage before sending them to the model.
 from __future__ import annotations
 
 import tempfile
+from contextlib import contextmanager
 
 import torch
 from PIL import Image
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel
 
 from ..base import BaseVLM, ModelResponse
 from .. import register_model
 
 _DEFAULT_MODEL_ID = "tinyllava/TinyLLaVA-Phi-2-SigLIP-3.1B"
+
+
+@contextmanager
+def _compat_tie_weights():
+    """Temporarily patch ``PreTrainedModel.init_weights`` so that custom
+    models whose ``tie_weights()`` doesn't accept the kwargs added by
+    newer transformers (``recompute_mapping``, ``missing_keys``) still load.
+
+    During ``init_weights`` we also permanently patch ``tie_weights`` on
+    the *model's own class* so that the later call from
+    ``_finalize_model_loading`` is safe too.
+    """
+    _orig_init_weights = PreTrainedModel.init_weights
+
+    def _patched_init_weights(self):
+        # Permanently patch tie_weights on this model's class to accept **kwargs
+        model_cls = type(self)
+        orig_tie = model_cls.tie_weights
+        if not getattr(orig_tie, "_kwargs_safe", False):
+            def _safe_tie(self, **kwargs):
+                return orig_tie(self)
+            _safe_tie._kwargs_safe = True
+            model_cls.tie_weights = _safe_tie
+
+        # Original init_weights logic
+        if hasattr(self, "initialize_weights"):
+            self.initialize_weights()
+        self.tie_weights(recompute_mapping=False)
+
+    PreTrainedModel.init_weights = _patched_init_weights
+    try:
+        yield
+    finally:
+        PreTrainedModel.init_weights = _orig_init_weights
 
 
 def _make_collage(images: list[Image.Image], gap: int = 20) -> Image.Image:
@@ -51,11 +91,14 @@ class TinyLLaVA(BaseVLM):
     ) -> None:
         self._model_id = model_id
         self._device = device
-        self._model = AutoModelForCausalLM.from_pretrained(
-            model_id,
-            trust_remote_code=True,
-            **kwargs,
-        ).to(device)
+
+        with _compat_tie_weights():
+            self._model = AutoModelForCausalLM.from_pretrained(
+                model_id,
+                trust_remote_code=True,
+                attn_implementation="eager",
+                **kwargs,
+            ).to(device)
         self._model.eval()
 
         config = self._model.config
