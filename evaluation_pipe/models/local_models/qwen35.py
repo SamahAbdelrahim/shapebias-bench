@@ -14,6 +14,7 @@ class _Qwen35Base(BaseVLM):
     """Shared loading/inference logic for Qwen3.5 vision-language models."""
 
     _default_model_id: str  # set by subclasses
+    _system_prompt = "Answer concisely. Do not explain your reasoning."
 
     def __init__(
         self,
@@ -44,18 +45,28 @@ class _Qwen35Base(BaseVLM):
         max_new_tokens: int = 128,
         temperature: float = 0.0,
     ) -> ModelResponse:
-        # Build multi-image chat message
+        # Build multi-image chat message with system prompt for concise output
+        messages: list[dict] = [
+            {"role": "system", "content": [{"type": "text", "text": self._system_prompt}]},
+        ]
         content: list[dict] = [{"type": "image", "image": img} for img in images]
         content.append({"type": "text", "text": prompt})
-        messages = [{"role": "user", "content": content}]
+        messages.append({"role": "user", "content": content})
 
-        inputs = self._processor.apply_chat_template(
+        # Two-step tokenization: the processor's apply_chat_template does not
+        # forward enable_thinking to the Jinja2 template, so we call the
+        # tokenizer first (to get the text with thinking disabled) and then
+        # pass the rendered text + raw images to the processor for encoding.
+        text = self._processor.tokenizer.apply_chat_template(
             messages,
             add_generation_prompt=True,
-            tokenize=True,
-            return_dict=True,
+            tokenize=False,
+            enable_thinking=False,
+        )
+        inputs = self._processor(
+            text=[text],
+            images=list(images),
             return_tensors="pt",
-            chat_template_kwargs={"enable_thinking": False},
         ).to(self._model.device)
 
         input_len = inputs["input_ids"].shape[1]
@@ -74,8 +85,8 @@ class _Qwen35Base(BaseVLM):
         output_ids, elapsed = self._timed_generate(_run)
 
         new_ids = output_ids[:, input_len:]
-        raw_text = self._processor.batch_decode(new_ids, skip_special_tokens=True)[0]
         num_tokens = new_ids.shape[1]
+        raw_text = self._processor.batch_decode(new_ids, skip_special_tokens=True)[0]
 
         return ModelResponse(
             raw_text=raw_text.strip(),
