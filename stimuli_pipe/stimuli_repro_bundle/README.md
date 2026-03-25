@@ -9,12 +9,16 @@ This folder contains the files needed to reproduce the ALICE stimuli generation 
 - `run_blender.sh`
 - `scripts/stl_spin_render.py`
 - `scripts/stl_material_overlay_render.py`
+- `scripts/standardize_stimuli_naming.py`
+- `scripts/build_combined_benchmark_manifest.py`
 - `colab_render.ipynb`
 - `colab_render_drive.ipynb`
+- `STIMULI_GUIDE.md`
 - `manifests/stimuli_B_manifest.csv`
 - `manifests/stimuli_A_manifest.csv`
 - `manifests/packages_B_manifest.csv`
 - `manifests/packages_A_manifest.csv`
+- `manifests/combined_benchmark_manifest.csv`
 
 ## Expected data layout
 
@@ -36,8 +40,7 @@ and write outputs under:
 3. From the copied bundle folder, run one mode at a time:
 
 ```bash
-bash ./run_blender.sh -b -P fixed_blender_centering_alice_texture.py -- \
-  --dataset "data/ALICE_stl_(Xu & Sandhofer, 2024)/stl"
+bash ./run_blender.sh -b -P fixed_blender_centering_alice_texture.py
 ```
 
 With environment variables:
@@ -48,8 +51,7 @@ ALICE_STIMULUS_RES=1024 \
 ALICE_STIMULUS_SAMPLES=128 \
 ALICE_STIMULUS_MATCH_REFERENCE=1 \
 ALICE_STIMULUS_MATCH_STEP_DEG=2 \
-bash ./run_blender.sh -b -P fixed_blender_centering_alice_texture.py -- \
-  --dataset "data/ALICE_stl_(Xu & Sandhofer, 2024)/stl"
+bash ./run_blender.sh -b -P fixed_blender_centering_alice_texture.py
 ```
 
 Then for A:
@@ -60,29 +62,38 @@ ALICE_STIMULUS_RES=1024 \
 ALICE_STIMULUS_SAMPLES=128 \
 ALICE_STIMULUS_MATCH_REFERENCE=1 \
 ALICE_STIMULUS_MATCH_STEP_DEG=2 \
-bash ./run_blender.sh -b -P fixed_blender_centering_alice_texture.py -- \
-  --dataset "data/ALICE_stl_(Xu & Sandhofer, 2024)/stl"
+bash ./run_blender.sh -b -P fixed_blender_centering_alice_texture.py
 ```
 
 ## Notes
 
 - The package layout and manifests are deterministic across runs (same input -> same naming).
 - The generated files per shape package are:
-  - `reference_image.png`
-  - `test_object_1.png`
-  - `test_object_2.png`
-  - `test_object_3.png` (different shape from `data/random_stl`, same material recipe as `test_object_1`)
+  - `example_image.png`
+  - `reference.png`
+  - `shape_match.png`
+  - `texture_match.png` (different shape from `data/random_stl`, same material recipe as `reference`)
 
-## Add the third test object
+## Add the third test object + standardize names
 
 After `stimuli_per_stl_packages` exists, run:
 
 ```bash
 bash ./run_blender.sh -b -P add_test_object_3_different_shape.py
+python3 scripts/standardize_stimuli_naming.py
 ```
 
 This updates:
 
-- `stimuli_per_stl_packages/stimuli_B_controlled_simple/*/test_object_3.png`
-- `stimuli_per_stl_packages/stimuli_A_auto_contrast/*/test_object_3.png`
-- both package manifests to include `test_object_3` column.
+- `stimuli_per_stl_packages/stimuli_B_controlled_simple/*/texture_match.png`
+- `stimuli_per_stl_packages/stimuli_A_auto_contrast/*/texture_match.png`
+- package manifests to:
+  - `mode,stl_id,example_image,reference,shape_match,texture_match`
+- non-packaged manifests to:
+  - `mode,stl_id,reference,shape_match`
+
+To build one benchmark-ingestion manifest:
+
+```bash
+python3 scripts/build_combined_benchmark_manifest.py
+```
