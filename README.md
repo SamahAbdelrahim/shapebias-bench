@@ -5,6 +5,13 @@ two folders:
 stimuli_pipe to create stimuli 
 evaluation and model pipeline 
 
+Stimuli onboarding:
+- Start with `STIMULI_GUIDE.md` (repo root)
+- Then read:
+  - `stimuli_pipe/stimuli_repro_bundle/README.md`
+  - `stimuli_pipe/stimuli_repro_bundle/STIMULI_GUIDE.md`
+- For benchmark use, point to `stimuli_pipe/stimuli_per_stl_packages` only.
+
 
 ```
 shapebias-bench/                                                                                                                                      
