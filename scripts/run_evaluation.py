@@ -186,16 +186,20 @@ def run_remote(model_name: str, images: list[Image.Image], prompt: str) -> dict:
     client = OpenAI(api_key=hf_token, base_url=base_url)
     messages = build_messages(images, prompt)
 
-    # Disable thinking mode for Qwen3.5 models to avoid wasting tokens
+    # Disable thinking mode for Qwen3.5 models to avoid wasting tokens.
+    # Also bump max_tokens as a safety net — if thinking isn't fully
+    # disabled by the provider, the thinking tokens eat into the budget.
     extra = {}
+    max_tok = MAX_TOKENS_REMOTE
     if "qwen" in cfg["model_id"].lower():
-        extra["extra_body"] = {"enable_thinking": False}
+        extra["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
+        max_tok = max(max_tok, 8192)
 
     start = time.perf_counter()
     response = client.chat.completions.create(
         model=cfg["model_id"],
         messages=messages,
-        max_tokens=MAX_TOKENS_REMOTE,
+        max_tokens=max_tok,
         temperature=TEMPERATURE,
         **extra,
     )

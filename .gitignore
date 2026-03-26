@@ -19,6 +19,9 @@ build/
 # Claude Code
 CLAUDE.md
 
+# Evaluation results
+results/
+
 # Stimuli archive artifacts (prevent accidental large-file commits)
 stimuli_pipe/**/*.zip
 stimuli_pipe/**/*.tar
