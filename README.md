@@ -6,7 +6,7 @@ stimuli_pipe to create stimuli
 evaluation and model pipeline 
 
 Stimuli onboarding:
-- Start with `STIMULI_GUIDE.md` (repo root)
+- Start with `STIMULI_GUIDE.md` (repo root/stimuli_pipe)
 - Then read:
   - `stimuli_pipe/stimuli_repro_bundle/README.md`
   - `stimuli_pipe/stimuli_repro_bundle/STIMULI_GUIDE.md`

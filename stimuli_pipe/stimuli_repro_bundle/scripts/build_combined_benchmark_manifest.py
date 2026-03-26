@@ -1,15 +1,15 @@
 """
 Build a combined benchmark-ready manifest from packaged ALICE stimuli.
 
-Inputs:
-  - data/ALICE_stl_(Xu & Sandhofer, 2024)/stimuli_per_stl_packages/stimuli_A_auto_contrast/manifest.csv
-  - data/ALICE_stl_(Xu & Sandhofer, 2024)/stimuli_per_stl_packages/stimuli_B_controlled_simple/manifest.csv
+Inputs (auto-detected):
+  - stimuli_per_stl_packages/stimuli_A_auto_contrast/manifest.csv
+  - stimuli_per_stl_packages/stimuli_B_controlled_simple/manifest.csv
 
 Output:
-  - data/ALICE_stl_(Xu & Sandhofer, 2024)/stimuli_per_stl_packages/combined_benchmark_manifest.csv
+  - stimuli_per_stl_packages/combined_benchmark_manifest.csv
 
 Columns:
-  trial_id,mode,stl_id,example_image,target,shape_match,texture_match,distractor
+  trial_id,mode,stl_id,reference,image_a,image_b,correct_label,shape_match,texture_match,example_image,target,distractor
 """
 
 from __future__ import annotations
@@ -18,9 +18,12 @@ import csv
 from pathlib import Path
 
 
-PROJECT = Path(__file__).resolve().parents[1]
-ALICE = PROJECT / "data" / "ALICE_stl_(Xu & Sandhofer, 2024)"
-PACKAGES = ALICE / "stimuli_per_stl_packages"
+BUNDLE_ROOT = Path(__file__).resolve().parents[1]
+LOCAL_PACKAGES = BUNDLE_ROOT.parent / "stimuli_per_stl_packages"
+ALICE_PACKAGES = (
+    BUNDLE_ROOT / "data" / "ALICE_stl_(Xu & Sandhofer, 2024)" / "stimuli_per_stl_packages"
+)
+PACKAGES = LOCAL_PACKAGES if LOCAL_PACKAGES.exists() else ALICE_PACKAGES
 
 MANIFESTS = [
     PACKAGES / "stimuli_A_auto_contrast" / "manifest.csv",
@@ -53,10 +56,17 @@ def main() -> None:
                         "trial_id": f"{_mode_tag(mode)}_{int(stl_id):03d}",
                         "mode": mode,
                         "stl_id": stl_id,
-                        "example_image": row.get("example_image", ""),
-                        "target": row.get("reference", ""),
+                        "reference": row.get("reference", ""),
+                        # Canonical 2AFC mapping for evaluation loaders:
+                        # image_a = shape_match, image_b = texture_match.
+                        "image_a": row.get("shape_match", ""),
+                        "image_b": row.get("texture_match", ""),
+                        "correct_label": "A",
                         "shape_match": row.get("shape_match", ""),
                         "texture_match": row.get("texture_match", ""),
+                        "example_image": row.get("example_image", ""),
+                        # Backward-compatible alias used in older drafts.
+                        "target": row.get("reference", ""),
                         # Placeholder for future negative-control assignment.
                         "distractor": "",
                     }
@@ -71,10 +81,14 @@ def main() -> None:
                 "trial_id",
                 "mode",
                 "stl_id",
-                "example_image",
-                "target",
+                "reference",
+                "image_a",
+                "image_b",
+                "correct_label",
                 "shape_match",
                 "texture_match",
+                "example_image",
+                "target",
                 "distractor",
             ],
         )

@@ -18,3 +18,10 @@ build/
 
 # Claude Code
 CLAUDE.md
+
+# Stimuli archive artifacts (prevent accidental large-file commits)
+stimuli_pipe/**/*.zip
+stimuli_pipe/**/*.tar
+stimuli_pipe/**/*.tar.gz
+stimuli_pipe/**/*.tgz
+stimuli_pipe/**/*.7z

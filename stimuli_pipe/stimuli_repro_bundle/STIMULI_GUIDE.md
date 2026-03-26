@@ -48,6 +48,45 @@ ALICE_STIMULUS_MODE=A_auto_contrast bash ./run_blender.sh -b -P fixed_blender_ce
 # Add packaged texture_match (third test image)
 bash ./run_blender.sh -b -P add_test_object_3_different_shape.py
 
+# Strictly sync reference + texture_match materials for B only
+ALICE_ONLY_MODES=stimuli_B_controlled_simple \
+ALICE_REPAIR_REFERENCE_TEXTURES=1 \
+ALICE_STIMULUS_USE_IMAGE_TEXTURES=1 \
+bash ./run_blender.sh -b -P add_test_object_3_different_shape.py
+
+# Strictly sync reference + texture_match materials for A only
+ALICE_ONLY_MODES=stimuli_A_auto_contrast \
+ALICE_REPAIR_REFERENCE_TEXTURES=1 \
+ALICE_STIMULUS_USE_IMAGE_TEXTURES=1 \
+bash ./run_blender.sh -b -P add_test_object_3_different_shape.py
+
 # Normalize names/manifests after generation
 python3 scripts/standardize_stimuli_naming.py
+
+# Rebuild combined benchmark manifest
+python3 scripts/build_combined_benchmark_manifest.py
 ```
+
+## Make textures look realistic
+
+The stimulus shader now supports image-based PBR texture maps.
+
+1. Put extracted texture folders in:
+   - `data/texture_library/` (or set `ALICE_TEXTURE_LIBRARY` to another path)
+2. Enable image textures during render:
+
+```bash
+ALICE_STIMULUS_USE_IMAGE_TEXTURES=1 \
+ALICE_STIMULUS_MODE=A_auto_contrast \
+bash ./run_blender.sh -b -P fixed_blender_centering_alice_texture.py
+```
+
+## Material consistency guarantee (packaged)
+
+For each STL package:
+- `reference.png`: same shape, reference material (variant 1)
+- `texture_match.png`: different shape, same material as `reference.png`
+
+`add_test_object_3_different_shape.py` supports deterministic texture locking per STL
+for both A and B modes, and can optionally re-render `reference.png` so both images
+are regenerated in one pass with the same chosen texture set.

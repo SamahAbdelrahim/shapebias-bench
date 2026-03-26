@@ -83,6 +83,18 @@ bash ./run_blender.sh -b -P add_test_object_3_different_shape.py
 python3 scripts/standardize_stimuli_naming.py
 ```
 
+For strict `reference`/`texture_match` texture sync (deterministic, per STL):
+
+```bash
+ALICE_ONLY_MODES=stimuli_A_auto_contrast \
+ALICE_REPAIR_REFERENCE_TEXTURES=1 \
+ALICE_STIMULUS_USE_IMAGE_TEXTURES=1 \
+bash ./run_blender.sh -b -P add_test_object_3_different_shape.py
+```
+
+Use `ALICE_ONLY_MODES=stimuli_B_controlled_simple` for B, or omit
+`ALICE_ONLY_MODES` to process both modes.
+
 This updates:
 
 - `stimuli_per_stl_packages/stimuli_B_controlled_simple/*/texture_match.png`
@@ -97,3 +109,19 @@ To build one benchmark-ingestion manifest:
 ```bash
 python3 scripts/build_combined_benchmark_manifest.py
 ```
+
+## Realistic Texture Option (Image PBR Maps)
+
+The stimulus material generator can use image texture sets (fabric/steel/etc.)
+instead of procedural-only textures.
+
+- Enable: `ALICE_STIMULUS_USE_IMAGE_TEXTURES=1` (default on)
+- Optional texture root override: `ALICE_TEXTURE_LIBRARY=/absolute/path/to/texture_sets`
+- Default expected location in this project:
+  - `data/texture_library/<set_name>/...maps...`
+
+Map filename keywords supported:
+- base color: `basecolor`, `albedo`, `color`, `diffuse`
+- roughness: `roughness`, `rough`
+- normal: `normalgl`, `normal`, `nor`
+- height/displacement: `height`, `displacement`, `disp`

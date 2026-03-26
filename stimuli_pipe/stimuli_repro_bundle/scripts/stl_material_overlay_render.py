@@ -28,6 +28,8 @@ animation_length_seconds = 4
 output_format = "MPEG4"
 video_codec = "H264"
 file_format = "FFMPEG"
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+_DEFAULT_TEXTURE_LIBRARY = _PROJECT_ROOT / "data" / "texture_library"
 
 
 def _apply_render_settings() -> None:
@@ -205,6 +207,10 @@ def _hsv_to_rgba(h: float, s: float, v: float):
     return (r, g, b, 1.0)
 
 
+def _offset_hue(h: float, offset: float) -> float:
+    return (h + offset) % 1.0
+
+
 def _palette_color(seed: int):
     # Vivid palette; no white/near-white to avoid "chalk" results.
     palette_hsv = [
@@ -238,6 +244,183 @@ def _set_principled_specular(principled, value: float) -> None:
             pass
 
 
+def _env_truthy(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name, "")
+    if not raw:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _iter_texture_set_dirs(root: Path):
+    if not root.exists():
+        return []
+    out = []
+    for p in sorted(root.iterdir(), key=lambda x: x.name.lower()):
+        if not p.is_dir():
+            continue
+        has_img_here = any(
+            c.is_file() and c.suffix.lower() in {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".webp", ".exr"}
+            for c in p.iterdir()
+        )
+        has_img_nested = any(
+            c.is_file() and c.suffix.lower() in {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".webp", ".exr"}
+            for c in p.rglob("*")
+        )
+        if has_img_here or has_img_nested:
+            out.append(p)
+    return out
+
+
+def _find_map_file(set_dir: Path, keywords):
+    files = sorted([p for p in set_dir.rglob("*") if p.is_file()], key=lambda p: str(p).lower())
+    for p in files:
+        n = p.name.lower()
+        if p.suffix.lower() not in {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".webp", ".exr"}:
+            continue
+        if "preview" in n:
+            continue
+        if any(k in n for k in keywords):
+            return p
+    return None
+
+
+def _resolve_pbr_maps(set_dir: Path):
+    # Covers common naming across texture sites/exporters.
+    return {
+        "basecolor": _find_map_file(set_dir, ["basecolor", "albedo", "color", "diffuse", "diff"]),
+        "ao": _find_map_file(set_dir, ["ambientocclusion", "ambient_occlusion", "ao"]),
+        "roughness": _find_map_file(set_dir, ["roughness", "rough"]),
+        "metallic": _find_map_file(set_dir, ["metalness", "metallic", "metal"]),
+        "normal": _find_map_file(set_dir, ["normalgl", "normal", "nor"]),
+        "height": _find_map_file(set_dir, ["height", "displacement", "disp", "bump"]),
+    }
+
+
+def _pick_texture_set(seed: int, *, prefer_keywords):
+    root_raw = os.environ.get("ALICE_TEXTURE_LIBRARY", "").strip()
+    root = Path(root_raw) if root_raw else _DEFAULT_TEXTURE_LIBRARY
+    set_dirs = _iter_texture_set_dirs(root)
+    if not set_dirs:
+        return None
+
+    preferred = []
+    if prefer_keywords:
+        kws = [k.lower() for k in prefer_keywords]
+        for d in set_dirs:
+            name = d.name.lower()
+            if any(k in name for k in kws):
+                preferred.append(d)
+    pool = preferred if preferred else set_dirs
+    return pool[seed % len(pool)]
+
+
+def _new_image_node(nodes, image_path: Path, *, colorspace: str):
+    tex = nodes.new(type="ShaderNodeTexImage")
+    tex.image = bpy.data.images.load(str(image_path), check_existing=True)
+    try:
+        tex.image.colorspace_settings.name = colorspace
+    except Exception:
+        pass
+    tex.projection = "BOX"
+    tex.projection_blend = 0.2
+    return tex
+
+
+def _build_pbr_textured_material(
+    mat,
+    *,
+    texture_set_dir: Path,
+    tint_rgba,
+    metallic: float,
+    roughness_default: float,
+    normal_strength: float,
+    tex_scale: float,
+    tint_strength: float,
+) -> bool:
+    maps = _resolve_pbr_maps(texture_set_dir)
+    base_map = maps.get("basecolor")
+    if base_map is None:
+        return False
+
+    nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
+    nodes.clear()
+
+    principled = nodes.new(type="ShaderNodeBsdfPrincipled")
+    output = nodes.new(type="ShaderNodeOutputMaterial")
+    tex_coord = nodes.new(type="ShaderNodeTexCoord")
+    mapping = nodes.new(type="ShaderNodeMapping")
+
+    mapping.inputs["Scale"].default_value = (tex_scale, tex_scale, tex_scale)
+    principled.inputs["Metallic"].default_value = metallic
+    principled.inputs["Roughness"].default_value = roughness_default
+    _set_principled_specular(principled, 0.32)
+
+    base_tex = _new_image_node(nodes, base_map, colorspace="sRGB")
+    base_color_socket = base_tex.outputs["Color"]
+    ao_map = maps.get("ao")
+    if ao_map is not None:
+        ao_tex = _new_image_node(nodes, ao_map, colorspace="Non-Color")
+        ao_mix = nodes.new(type="ShaderNodeMixRGB")
+        ao_mix.blend_type = "MULTIPLY"
+        ao_mix.inputs["Fac"].default_value = 0.5
+        links.new(mapping.outputs["Vector"], ao_tex.inputs["Vector"])
+        links.new(base_tex.outputs["Color"], ao_mix.inputs["Color1"])
+        links.new(ao_tex.outputs["Color"], ao_mix.inputs["Color2"])
+        base_color_socket = ao_mix.outputs["Color"]
+
+    tint = nodes.new(type="ShaderNodeMixRGB")
+    tint.blend_type = "MIX"
+    tint.inputs["Fac"].default_value = tint_strength
+    tint.inputs["Color2"].default_value = tint_rgba
+
+    links.new(tex_coord.outputs["Object"], mapping.inputs["Vector"])
+    links.new(mapping.outputs["Vector"], base_tex.inputs["Vector"])
+    links.new(base_color_socket, tint.inputs["Color1"])
+    links.new(tint.outputs["Color"], principled.inputs["Base Color"])
+
+    rough_map = maps.get("roughness")
+    if rough_map is not None:
+        rough_tex = _new_image_node(nodes, rough_map, colorspace="Non-Color")
+        links.new(mapping.outputs["Vector"], rough_tex.inputs["Vector"])
+        links.new(rough_tex.outputs["Color"], principled.inputs["Roughness"])
+
+    metallic_map = maps.get("metallic")
+    if metallic_map is not None:
+        metal_tex = _new_image_node(nodes, metallic_map, colorspace="Non-Color")
+        links.new(mapping.outputs["Vector"], metal_tex.inputs["Vector"])
+        links.new(metal_tex.outputs["Color"], principled.inputs["Metallic"])
+
+    normal_map = maps.get("normal")
+    height_map = maps.get("height")
+    if normal_map is not None:
+        ntex = _new_image_node(nodes, normal_map, colorspace="Non-Color")
+        nmap = nodes.new(type="ShaderNodeNormalMap")
+        nmap.inputs["Strength"].default_value = normal_strength
+        links.new(mapping.outputs["Vector"], ntex.inputs["Vector"])
+        links.new(ntex.outputs["Color"], nmap.inputs["Color"])
+        if height_map is not None:
+            htex = _new_image_node(nodes, height_map, colorspace="Non-Color")
+            bump = nodes.new(type="ShaderNodeBump")
+            bump.inputs["Strength"].default_value = max(0.15, 0.45 * normal_strength)
+            links.new(mapping.outputs["Vector"], htex.inputs["Vector"])
+            links.new(htex.outputs["Color"], bump.inputs["Height"])
+            links.new(nmap.outputs["Normal"], bump.inputs["Normal"])
+            links.new(bump.outputs["Normal"], principled.inputs["Normal"])
+        else:
+            links.new(nmap.outputs["Normal"], principled.inputs["Normal"])
+    elif height_map is not None:
+        htex = _new_image_node(nodes, height_map, colorspace="Non-Color")
+        bump = nodes.new(type="ShaderNodeBump")
+        bump.inputs["Strength"].default_value = max(0.12, 0.4 * normal_strength)
+        links.new(mapping.outputs["Vector"], htex.inputs["Vector"])
+        links.new(htex.outputs["Color"], bump.inputs["Height"])
+        links.new(bump.outputs["Normal"], principled.inputs["Normal"])
+
+    links.new(principled.outputs[0], output.inputs[0])
+    return True
+
+
 def _build_matte_solid_material(mat, color_rgba) -> None:
     nodes = mat.node_tree.nodes
     links = mat.node_tree.links
@@ -265,9 +448,9 @@ def _build_patterned_solid_material(mat, color_light, color_dark, *, seed: int) 
     output = nodes.new(type="ShaderNodeOutputMaterial")
 
     principled.inputs["Metallic"].default_value = 0.0
-    principled.inputs["Roughness"].default_value = 0.62
+    principled.inputs["Roughness"].default_value = 0.58
     _set_principled_specular(principled, 0.35)
-    bump.inputs["Strength"].default_value = 0.03
+    bump.inputs["Strength"].default_value = 0.22
 
     noise.inputs["Scale"].default_value = 12.0 + (seed % 5)
     try:
@@ -285,7 +468,6 @@ def _build_patterned_solid_material(mat, color_light, color_dark, *, seed: int) 
     links.new(mapping.outputs["Vector"], noise.inputs["Vector"])
     links.new(noise.outputs["Fac"], ramp.inputs["Fac"])
     links.new(ramp.outputs["Color"], principled.inputs["Base Color"])
-    links.new(mapping.outputs["Vector"], bump.inputs["Normal"])
     links.new(noise.outputs["Fac"], bump.inputs["Height"])
     links.new(bump.outputs["Normal"], principled.inputs["Normal"])
     links.new(principled.outputs[0], output.inputs[0])
@@ -312,15 +494,39 @@ def apply_material_stimulus_variant(obj, seed: int, *, stimulus_mode: str, varia
     mat.use_nodes = True
 
     base_h = (seed % 360) / 360.0
+    use_img_textures = _env_truthy("ALICE_STIMULUS_USE_IMAGE_TEXTURES", default=True)
+
     if mode == "B_controlled_simple":
-        # Keep hue family constant; manipulate texture/material only.
+        # Reference/texture_match share one textured material.
+        # shape_match is always a contrasting hue so color never matches reference.
         c_base = _hsv_to_rgba(base_h, 0.58, 0.82)
-        c_light = _hsv_to_rgba(base_h, 0.52, 0.92)
-        c_dark = _hsv_to_rgba(base_h, 0.68, 0.62)
+        c_ref_tint = _hsv_to_rgba(base_h, 0.50, 0.90)
+        alt_h = _offset_hue(base_h, 0.34)
+        c_alt_base = _hsv_to_rgba(alt_h, 0.74, 0.88)
+        c_alt_light = _hsv_to_rgba(alt_h, 0.62, 0.94)
+        c_alt_dark = _hsv_to_rgba(alt_h, 0.78, 0.62)
         if variant_index == 1:
-            _build_matte_solid_material(mat, c_base)
+            used_pbr = False
+            if use_img_textures:
+                tex_set = _pick_texture_set(seed, prefer_keywords=["fabric", "cloth", "carpet", "leather"])
+                if tex_set is not None:
+                    used_pbr = _build_pbr_textured_material(
+                        mat,
+                        texture_set_dir=tex_set,
+                        tint_rgba=c_ref_tint,
+                        metallic=0.0,
+                        roughness_default=0.62,
+                        normal_strength=2.2,
+                        tex_scale=0.8,
+                        tint_strength=0.14,
+                    )
+            if not used_pbr:
+                _build_patterned_solid_material(mat, c_ref_tint, c_base, seed=seed)
         else:
-            _build_patterned_solid_material(mat, c_light, c_dark, seed=seed)
+            if _env_truthy("ALICE_STIMULUS_B_PATTERNED_SHAPE_MATCH", default=False):
+                _build_patterned_solid_material(mat, c_alt_light, c_alt_dark, seed=(seed ^ 0xABCD))
+            else:
+                _build_matte_solid_material(mat, c_alt_base)
     else:
         # High-separation pair: opposite hue and finish contrast.
         alt_h = (base_h + 0.5) % 1.0
@@ -328,9 +534,24 @@ def apply_material_stimulus_variant(obj, seed: int, *, stimulus_mode: str, varia
         c_v2_light = _hsv_to_rgba(alt_h, 0.95, 0.95)
         c_v2_dark = _hsv_to_rgba(alt_h, 0.90, 0.70)
         if variant_index == 1:
-            _build_matte_solid_material(mat, c_v1)
+            used_pbr = False
+            if use_img_textures:
+                tex_set = _pick_texture_set(seed ^ 0x5A5A, prefer_keywords=["steel", "metal", "rust", "corrugated"])
+                if tex_set is not None:
+                    used_pbr = _build_pbr_textured_material(
+                        mat,
+                        texture_set_dir=tex_set,
+                        tint_rgba=c_v2_light,
+                        metallic=0.55,
+                        roughness_default=0.48,
+                        normal_strength=2.8,
+                        tex_scale=0.7,
+                        tint_strength=0.12,
+                    )
+            if not used_pbr:
+                _build_patterned_solid_material(mat, c_v2_light, c_v2_dark, seed=(seed ^ 0x5A5A))
         else:
-            _build_patterned_solid_material(mat, c_v2_light, c_v2_dark, seed=(seed ^ 0x5A5A))
+            _build_matte_solid_material(mat, c_v1)
 
     obj.data.materials.clear()
     obj.data.materials.append(mat)
@@ -484,8 +705,7 @@ def apply_material_overlay(obj, seed: int, *, material_style: str = "overlay") -
         except KeyError:
             pass
 
-    # Bump: Blender 4.5 uses "Normal" socket on ShaderNodeBump.
-    links.new(mapping.outputs["Vector"], bump.inputs["Normal"])
+    # Feed bump from noise height only; do not inject vectors into normal input.
     links.new(noise.outputs["Fac"], bump.inputs["Height"])
     links.new(bump.outputs["Normal"], principled.inputs["Normal"])
 

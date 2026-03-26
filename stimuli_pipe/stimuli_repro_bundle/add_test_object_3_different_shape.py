@@ -1,11 +1,11 @@
 """
-Add test_object_3.png per packaged stimulus:
+Add texture_match.png per packaged stimulus:
   - different shape (from data/random_stl)
-  - same material as test_object_1 (variant 1 for each mode/shape)
+  - same material as reference (variant 1 for each mode/shape)
 
 Outputs:
-  data/ALICE_stl_(Xu & Sandhofer, 2024)/stimuli_per_stl_packages/<mode>/<stem>/test_object_3.png
-  and updates each mode manifest.csv with a test_object_3 column.
+  data/ALICE_stl_(Xu & Sandhofer, 2024)/stimuli_per_stl_packages/<mode>/<stem>/texture_match.png
+  and updates each mode manifest.csv with a texture_match column.
 
 Optional:
   ALICE_ONLY_STEMS=1,2,15
@@ -33,6 +33,14 @@ _MODE_MAP = {
     "stimuli_B_controlled_simple": "B_controlled_simple",
     "stimuli_A_auto_contrast": "A_auto_contrast",
 }
+
+
+def _selected_modes_from_env():
+    raw = os.environ.get("ALICE_ONLY_MODES", "").strip()
+    if not raw:
+        return None
+    wanted = {x.strip() for x in raw.split(",") if x.strip()}
+    return {k: v for k, v in _MODE_MAP.items() if k in wanted or v in wanted}
 
 
 def _parse_positive_int(raw: str, default: int) -> int:
@@ -117,6 +125,38 @@ def _seed_for_alice_stem(stem: str) -> int:
     return scene._stable_int(str(_ALICE / "stl" / f"{stem}.stl"))
 
 
+def _texture_preferences_for_mode(stimulus_mode: str):
+    if stimulus_mode == "B_controlled_simple":
+        return ["fabric", "cloth", "carpet", "leather"]
+    return ["steel", "metal", "rust", "corrugated"]
+
+
+def _forced_texture_set_name(seed: int, stimulus_mode: str):
+    picker_seed = seed if stimulus_mode == "B_controlled_simple" else (seed ^ 0x5A5A)
+    tex_set = mats._pick_texture_set(picker_seed, prefer_keywords=_texture_preferences_for_mode(stimulus_mode))
+    return tex_set.name if tex_set is not None else ""
+
+
+def _render_variant1_png(stl_path: Path, out_png: Path, *, seed: int, stimulus_mode: str) -> bool:
+    scene.clear_scene()
+    scene.bpy.ops.wm.stl_import(filepath=str(stl_path))
+    selected = list(scene.bpy.context.selected_objects)
+    if not selected:
+        print(f"WARNING: failed to import STL: {stl_path}")
+        return False
+
+    obj = selected[0]
+    object_size = scene.center_and_scale_object(obj, target_size=2.0)
+    scene.setup_scene(obj, object_size, material_mode="flat", material_seed=seed)
+    _set_dark_gray_background()
+    _set_balanced_color_management(exposure=0.20)
+    _rebalance_lighting_soft(object_size)
+    _configure_stimulus_render_controls()
+    mats.apply_material_stimulus_variant(obj, seed, stimulus_mode=stimulus_mode, variant_index=1)
+    scene.render_still(str(out_png))
+    return True
+
+
 def _pick_distractor(stem: str, random_paths):
     if not random_paths:
         raise RuntimeError(f"No random STL files found in {_RANDOM_STL}")
@@ -140,38 +180,48 @@ def _render_one(mode_folder: str, stimulus_mode: str, stem: str, random_paths) -
     if not stem_dir.exists():
         return False
 
-    needed = [
-        stem_dir / "reference_image.png",
-        stem_dir / "test_object_1.png",
-        stem_dir / "test_object_2.png",
-    ]
-    if not all(p.exists() for p in needed):
+    # Accept both legacy and standardized package naming.
+    has_standard = all(
+        (stem_dir / name).exists() for name in ("example_image.png", "reference.png", "shape_match.png")
+    )
+    has_legacy = all(
+        (stem_dir / name).exists() for name in ("reference_image.png", "test_object_1.png", "test_object_2.png")
+    )
+    needed = has_standard or has_legacy
+    if not needed:
         print(f"WARNING: missing required files in {stem_dir}; skipping")
         return False
 
+    source_stl = _ALICE / "stl" / f"{stem}.stl"
     distractor_stl = _pick_distractor(stem, random_paths)
-    out_png = stem_dir / "test_object_3.png"
+    ref_png = stem_dir / "reference.png"
+    tex_png = stem_dir / "texture_match.png"
     seed = _seed_for_alice_stem(stem)
+    repair_ref = os.environ.get("ALICE_REPAIR_REFERENCE_TEXTURES", "").strip().lower() in {"1", "true", "yes", "on"}
 
-    scene.clear_scene()
-    scene.bpy.ops.wm.stl_import(filepath=str(distractor_stl))
-    selected = list(scene.bpy.context.selected_objects)
-    if not selected:
-        print(f"WARNING: failed to import distractor STL for stem {stem}: {distractor_stl}")
-        return False
+    prev_force = os.environ.get("ALICE_FORCE_TEXTURE_SET", "")
+    forced_set = _forced_texture_set_name(seed, stimulus_mode)
+    if forced_set:
+        os.environ["ALICE_FORCE_TEXTURE_SET"] = forced_set
 
-    obj = selected[0]
-    object_size = scene.center_and_scale_object(obj, target_size=2.0)
-    scene.setup_scene(obj, object_size, material_mode="flat", material_seed=seed)
-    _set_dark_gray_background()
-    _set_balanced_color_management(exposure=0.20)
-    _rebalance_lighting_soft(object_size)
-    _configure_stimulus_render_controls()
+    try:
+        if repair_ref:
+            if not source_stl.exists():
+                print(f"WARNING: source STL missing for stem {stem}: {source_stl}")
+                return False
+            if not _render_variant1_png(source_stl, ref_png, seed=seed, stimulus_mode=stimulus_mode):
+                return False
+            print(f"Rendered {ref_png} with forced texture set={forced_set or 'auto'}")
 
-    mats.apply_material_stimulus_variant(obj, seed, stimulus_mode=stimulus_mode, variant_index=1)
-    scene.render_still(str(out_png))
-    print(f"Rendered {out_png} using distractor shape {distractor_stl.name}")
-    return True
+        if not _render_variant1_png(distractor_stl, tex_png, seed=seed, stimulus_mode=stimulus_mode):
+            return False
+        print(f"Rendered {tex_png} using distractor shape {distractor_stl.name} forced texture set={forced_set or 'auto'}")
+        return True
+    finally:
+        if prev_force:
+            os.environ["ALICE_FORCE_TEXTURE_SET"] = prev_force
+        else:
+            os.environ.pop("ALICE_FORCE_TEXTURE_SET", None)
 
 
 def _update_manifest(mode_folder: str):
@@ -187,16 +237,20 @@ def _update_manifest(mode_folder: str):
         return
 
     fields = list(rows[0].keys())
-    if "test_object_3" not in fields:
-        fields.append("test_object_3")
+    if "texture_match" not in fields:
+        fields.append("texture_match")
+    if "test_object_3" in fields:
+        fields.remove("test_object_3")
 
     for row in rows:
         stem = str(row.get("stl_id", "")).strip()
-        row["test_object_3"] = (
-            f"stimuli_per_stl_packages/{mode_folder}/{stem}/test_object_3.png"
+        row["texture_match"] = (
+            f"stimuli_per_stl_packages/{mode_folder}/{stem}/texture_match.png"
             if stem
             else ""
         )
+        if "test_object_3" in row:
+            row.pop("test_object_3", None)
 
     with manifest.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
@@ -208,10 +262,12 @@ def _update_manifest(mode_folder: str):
 
 def main():
     selected_stems = _selected_stems_from_env()
+    selected_modes = _selected_modes_from_env()
     random_paths = sorted(_RANDOM_STL.glob("*.stl"), key=lambda p: p.name.lower())
+    mode_map = selected_modes if selected_modes else _MODE_MAP
 
     total = 0
-    for mode_folder, stimulus_mode in _MODE_MAP.items():
+    for mode_folder, stimulus_mode in mode_map.items():
         mode_dir = _PACKAGES_ROOT / mode_folder
         if not mode_dir.exists():
             print(f"WARNING: mode folder missing: {mode_dir}")
