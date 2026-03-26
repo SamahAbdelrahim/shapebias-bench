@@ -1,0 +1,43 @@
+---
+title: "Shape Bias Benchmark — Results"
+format:
+  html:
+    embed-resources: true
+---
+
+```{r setup, include=FALSE}
+source("src/load_data.R")
+source("src/plot_model_bias.R")
+source("src/plot_stimulus_bias.R")
+
+df <- load_results(get_data_path()) |> add_model_size()
+fig_dir <- get_figures_dir()
+```
+
+## Shape Bias by Model
+
+```{r fig-model-main, fig.width=8, fig.height=5, fig.cap="Proportion of shape choices by model, sorted by parameter count. Dashed line = chance (0.5)."}
+p <- plot_model_bias_main(df)
+ggsave(file.path(fig_dir, "A_model_bias_main.png"), p, width = 8, height = 5, dpi = 300)
+p
+```
+
+```{r fig-model-supplement, fig.width=8, fig.height=5, fig.cap="Full response breakdown (shape / texture / unclear) by model."}
+p <- plot_model_bias_supplement(df)
+ggsave(file.path(fig_dir, "A_model_bias_supplement.png"), p, width = 8, height = 5, dpi = 300)
+p
+```
+
+## Shape Bias by Stimulus
+
+```{r fig-stim-main, fig.width=10, fig.height=5, fig.cap="Proportion of shape choices by stimulus, averaged across models. Dashed line = chance (0.5)."}
+p <- plot_stimulus_bias_main(df)
+ggsave(file.path(fig_dir, "B_stimulus_bias_main.png"), p, width = 10, height = 5, dpi = 300)
+p
+```
+
+```{r fig-stim-supplement, fig.width=10, fig.height=5, fig.cap="Full response breakdown (shape / texture / unclear) by stimulus."}
+p <- plot_stimulus_bias_supplement(df)
+ggsave(file.path(fig_dir, "B_stimulus_bias_supplement.png"), p, width = 10, height = 5, dpi = 300)
+p
+```

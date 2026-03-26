@@ -28,3 +28,10 @@ stimuli_pipe/**/*.tar
 stimuli_pipe/**/*.tar.gz
 stimuli_pipe/**/*.tgz
 stimuli_pipe/**/*.7z
+
+# R / renv
+analysis_pipe/renv/library/
+analysis_pipe/renv/staging/
+analysis_pipe/.Rprofile
+analysis_pipe/*_files/
+analysis_pipe/*.html
