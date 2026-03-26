@@ -78,15 +78,15 @@ p
 
 ### By order method
 
-```{r fig-model-fixed, fig.width=8, fig.height=5, fig.cap="Shape bias — fixed (deterministic) trials only."}
-p <- plot_model_bias_main(df, order_method = "fixed")
-ggsave(file.path(fig_dir, "A_model_bias_fixed.png"), p, width = 8, height = 5, dpi = 300)
+```{r fig-model-deterministic, fig.width=8, fig.height=5, fig.cap="Shape bias — deterministic trials only (both orderings run per stimulus)."}
+p <- plot_model_bias_main(df, order_method = "deterministic")
+ggsave(file.path(fig_dir, "A_model_bias_deterministic.png"), p, width = 8, height = 5, dpi = 300)
 p
 ```
 
-```{r fig-model-random-method, fig.width=8, fig.height=5, fig.cap="Shape bias — randomly assigned ordering only."}
+```{r fig-model-random-method, fig.width=8, fig.height=5, fig.cap="Shape bias — random ordering trials only (one random ordering per stimulus)."}
 p <- plot_model_bias_main(df, order_method = "random")
-ggsave(file.path(fig_dir, "A_model_bias_random_method.png"), p, width = 8, height = 5, dpi = 300)
+ggsave(file.path(fig_dir, "A_model_bias_random_ordering.png"), p, width = 8, height = 5, dpi = 300)
 p
 ```
 
@@ -134,15 +134,15 @@ p
 
 ### By order method
 
-```{r fig-stim-fixed, fig.width=10, fig.height=5, fig.cap="Stimulus bias — fixed (deterministic) trials only."}
-p <- plot_stimulus_bias_main(df, order_method = "fixed")
-ggsave(file.path(fig_dir, "B_stimulus_bias_fixed.png"), p, width = 10, height = 5, dpi = 300)
+```{r fig-stim-deterministic, fig.width=10, fig.height=5, fig.cap="Stimulus bias — deterministic trials only (both orderings run per stimulus)."}
+p <- plot_stimulus_bias_main(df, order_method = "deterministic")
+ggsave(file.path(fig_dir, "B_stimulus_bias_deterministic.png"), p, width = 10, height = 5, dpi = 300)
 p
 ```
 
-```{r fig-stim-random-method, fig.width=10, fig.height=5, fig.cap="Stimulus bias — randomly assigned ordering only."}
+```{r fig-stim-random-method, fig.width=10, fig.height=5, fig.cap="Stimulus bias — random ordering trials only (one random ordering per stimulus)."}
 p <- plot_stimulus_bias_main(df, order_method = "random")
-ggsave(file.path(fig_dir, "B_stimulus_bias_random_method.png"), p, width = 10, height = 5, dpi = 300)
+ggsave(file.path(fig_dir, "B_stimulus_bias_random_ordering.png"), p, width = 10, height = 5, dpi = 300)
 p
 ```
 

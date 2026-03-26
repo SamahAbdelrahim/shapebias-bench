@@ -15,7 +15,8 @@ MISSING_COL <- "#AAAAAA"
 #' If it gives the same answer regardless of ordering, it has position bias.
 classify_position_bias <- function(df) {
   paired <- df |>
-    filter(ordering %in% c("shape_first", "texture_first")) |>
+    filter(ordering %in% c("shape_first", "texture_first"),
+           order_method == "deterministic") |>
     select(model, model_label, stim_id, word, ordering, parsed_answer) |>
     pivot_wider(names_from = ordering, values_from = parsed_answer,
                 values_fn = list)

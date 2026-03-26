@@ -167,7 +167,7 @@ def run_trial(run_fn, stimulus: dict, word: str, word_type: str,
         order_method = "random"
     else:
         configs = orderings_config[ordering]
-        order_method = "fixed"
+        order_method = "deterministic"
 
     results = []
     for ord_name, img_a, img_b, a_is, b_is in configs:
