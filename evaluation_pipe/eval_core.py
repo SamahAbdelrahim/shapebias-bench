@@ -7,6 +7,7 @@ used by both `scripts/run_remote.py` and `scripts/run_local.py`.
 from __future__ import annotations
 
 import csv
+import os
 import random
 import time
 from pathlib import Path
@@ -60,6 +61,7 @@ CSV_FIELDS = [
     "model", "model_name", "stim_id", "word", "word_type", "word_length",
     "ordering", "a_is", "b_is", "raw_text", "parsed_answer", "choice",
     "generation_time_s", "num_tokens_generated", "attempts",
+    "repeat", "temperature",
 ]
 
 
@@ -82,8 +84,11 @@ def make_prompt(word: str) -> str:
 # ---------------------------------------------------------------------------
 # Stimuli loading
 # ---------------------------------------------------------------------------
-def load_stimuli(stim_set: str = DEFAULT_STIM_SET,
+def load_stimuli(stim_set: str | None = None,
                  num_stimuli: int | None = None) -> list[dict]:
+    if stim_set is None:
+        env_dataset = os.environ.get("IMAGE_DATASET")
+        stim_set = Path(env_dataset).name if env_dataset else DEFAULT_STIM_SET
     stim_base = STIMULI_DIR / stim_set
     stim_dirs = sorted([d for d in stim_base.iterdir() if d.is_dir()],
                        key=lambda d: int(d.name))
@@ -137,55 +142,53 @@ def run_with_retry(run_fn, images: list[Image.Image], prompt: str) -> dict:
 # Single trial (both orderings)
 # ---------------------------------------------------------------------------
 def run_trial(run_fn, stimulus: dict, word: str, word_type: str,
-              word_length: int = 0) -> list[dict]:
-    """Run one stimulus in both orderings. Returns two result dicts."""
+              word_length: int = 0, ordering: str = "both") -> list[dict]:
+    """Run one stimulus in specified ordering(s). Returns list of result dicts.
+
+    ordering: "shape_first", "texture_first", "random", or "both" (default).
+    """
     ref = stimulus["reference"]
     shape = stimulus["shape_match"]
     texture = stimulus["texture_match"]
     prompt = make_prompt(word)
+
+    # Determine which orderings to run
+    orderings_config = {
+        "shape_first":   [("shape_first",   shape, texture, "shape", "texture")],
+        "texture_first": [("texture_first", texture, shape, "texture", "shape")],
+        "both": [
+            ("shape_first",   shape, texture, "shape", "texture"),
+            ("texture_first", texture, shape, "texture", "shape"),
+        ],
+    }
+    if ordering == "random":
+        configs = list(orderings_config["both"])
+        random.shuffle(configs)
+        configs = configs[:1]  # pick one at random
+    else:
+        configs = orderings_config[ordering]
+
     results = []
-
-    # Ordering 1: A=shape, B=texture
-    res = run_with_retry(run_fn, [ref, shape, texture], prompt)
-    answer = res.get("parsed_answer")
-    if answer == "A":
-        choice = "shape"
-    elif answer == "B":
-        choice = "texture"
-    else:
-        choice = "unclear"
-    results.append({
-        **res,
-        "stim_id": stimulus["stim_id"],
-        "word": word,
-        "word_type": word_type,
-        "word_length": word_length,
-        "ordering": "shape_first",
-        "a_is": "shape",
-        "b_is": "texture",
-        "choice": choice,
-    })
-
-    # Ordering 2: A=texture, B=shape
-    res = run_with_retry(run_fn, [ref, texture, shape], prompt)
-    answer = res.get("parsed_answer")
-    if answer == "A":
-        choice = "texture"
-    elif answer == "B":
-        choice = "shape"
-    else:
-        choice = "unclear"
-    results.append({
-        **res,
-        "stim_id": stimulus["stim_id"],
-        "word": word,
-        "word_type": word_type,
-        "word_length": word_length,
-        "ordering": "texture_first",
-        "a_is": "texture",
-        "b_is": "shape",
-        "choice": choice,
-    })
+    for ord_name, img_a, img_b, a_is, b_is in configs:
+        res = run_with_retry(run_fn, [ref, img_a, img_b], prompt)
+        answer = res.get("parsed_answer")
+        if answer == "A":
+            choice = a_is
+        elif answer == "B":
+            choice = b_is
+        else:
+            choice = "unclear"
+        results.append({
+            **res,
+            "stim_id": stimulus["stim_id"],
+            "word": word,
+            "word_type": word_type,
+            "word_length": word_length,
+            "ordering": ord_name,
+            "a_is": a_is,
+            "b_is": b_is,
+            "choice": choice,
+        })
 
     return results
 
@@ -195,8 +198,8 @@ def run_trial(run_fn, stimulus: dict, word: str, word_type: str,
 # ---------------------------------------------------------------------------
 def add_common_args(parser) -> None:
     """Add arguments shared by both local and remote scripts."""
-    parser.add_argument("--stim-set", default=DEFAULT_STIM_SET,
-                        help=f"Stimulus set directory name (default: {DEFAULT_STIM_SET})")
+    parser.add_argument("--stim-set", default=None,
+                        help=f"Stimulus set directory name (default: IMAGE_DATASET env var or {DEFAULT_STIM_SET})")
     parser.add_argument("--num-stimuli", type=int, default=None,
                         help="Number of stimuli to sample (default: all)")
     parser.add_argument("-o", "--output", default=None,
@@ -208,14 +211,19 @@ def add_common_args(parser) -> None:
 # ---------------------------------------------------------------------------
 # CSV writing and summary
 # ---------------------------------------------------------------------------
-def write_results(all_results: list[dict], output_path: Path) -> None:
-    """Write results to CSV."""
+def write_results(all_results: list[dict], output_path: Path,
+                   append: bool = False, quiet: bool = False) -> None:
+    """Write results to CSV. When append=True, adds rows without overwriting."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "w", newline="") as f:
+    write_header = not append or not output_path.exists() or output_path.stat().st_size == 0
+    mode = "a" if append else "w"
+    with open(output_path, mode, newline="") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_FIELDS, extrasaction="ignore")
-        writer.writeheader()
+        if write_header:
+            writer.writeheader()
         writer.writerows(all_results)
-    print(f"\nResults saved to {output_path}")
+    if not quiet:
+        print(f"\nResults {'appended to' if append else 'saved to'} {output_path}")
 
 
 def print_summary(all_results: list[dict], model_names: list[str]) -> None:
@@ -251,6 +259,7 @@ def resolve_output_path(output_arg: str | None, prefix: str = "eval") -> Path:
     """Resolve output CSV path from CLI arg or generate timestamped default."""
     if output_arg is not None:
         return Path(output_arg)
-    RESULTS_DIR.mkdir(exist_ok=True)
+    results_dir = Path(os.environ["RESULTS_DIR"]) if os.environ.get("RESULTS_DIR") else RESULTS_DIR
+    results_dir.mkdir(exist_ok=True)
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    return RESULTS_DIR / f"{prefix}_{timestamp}.csv"
+    return results_dir / f"{prefix}_{timestamp}.csv"

@@ -2,20 +2,21 @@
 """Shape-bias evaluation for local (GPU-based) VLMs.
 
 Usage:
-    # Run a single local model
-    python scripts/run_local.py --models smolvlm --device cuda
+    # Run a single model with one ordering
+    python scripts/run_local.py --models smolvlm --ordering shape_first
 
     # Run multiple local models
-    python scripts/run_local.py --models smolvlm internvl qwen3.5-0.8b
+    python scripts/run_local.py --models smolvlm internvl --ordering texture_first
 
     # Run all registered local models
-    python scripts/run_local.py --models all
+    python scripts/run_local.py --models all --ordering shape_first
 
-    # Limit stimuli count
-    python scripts/run_local.py --models smolvlm --num-stimuli 5
+    # Multiple repeats with temperature
+    python scripts/run_local.py --models smolvlm --ordering shape_first --repeats 3 --temperature 0.7
 
-    # Specify output
-    python scripts/run_local.py --models smolvlm -o results/local_run.csv
+    # Append results to existing CSV
+    python scripts/run_local.py --models smolvlm --ordering shape_first -o results/run.csv
+    python scripts/run_local.py --models smolvlm --ordering texture_first -o results/run.csv
 """
 
 from __future__ import annotations
@@ -35,7 +36,6 @@ from evaluation_pipe.eval_core import (
     DEFAULT_DEVICE,
     ENV_PATH,
     MAX_TOKENS_LOCAL,
-    TEMPERATURE,
     add_common_args,
     load_stimuli,
     load_words,
@@ -51,11 +51,12 @@ load_dotenv(ENV_PATH)
 # ---------------------------------------------------------------------------
 # Local inference
 # ---------------------------------------------------------------------------
-def run_local(model, images: list[Image.Image], prompt: str) -> dict:
+def run_local(model, images: list[Image.Image], prompt: str,
+              temperature: float = 0.0) -> dict:
     from evaluation_pipe.models.base import ModelResponse
     resp: ModelResponse = model.generate(
         images=images, prompt=prompt,
-        max_new_tokens=MAX_TOKENS_LOCAL, temperature=TEMPERATURE,
+        max_new_tokens=MAX_TOKENS_LOCAL, temperature=temperature,
     )
     return {
         "raw_text": resp.raw_text,
@@ -74,6 +75,13 @@ def main():
                         help="Model names to evaluate. Use 'all' for all registered local models.")
     parser.add_argument("--device", default=DEFAULT_DEVICE,
                         help=f"Device for local models (default: {DEFAULT_DEVICE})")
+    parser.add_argument("--ordering", required=True,
+                        choices=["shape_first", "texture_first", "random"],
+                        help="Trial ordering: shape_first, texture_first, or random")
+    parser.add_argument("--repeats", type=int, default=1,
+                        help="Number of repeats per trial (default: 1)")
+    parser.add_argument("--temperature", type=float, default=0.0,
+                        help="Sampling temperature (default: 0.0 = greedy)")
     add_common_args(parser)
     args = parser.parse_args()
 
@@ -96,11 +104,16 @@ def main():
     # Load stimuli and words
     words = load_words()
     stimuli = load_stimuli(args.stim_set, args.num_stimuli)
-    print(f"Models:  {model_names}")
-    print(f"Device:  {args.device}")
-    print(f"Stimuli: {len(stimuli)} from {args.stim_set}")
-    print(f"Words:   {len(words)} ({len(words)//2} sudo + {len(words)//2} random)")
-    print(f"Trials per model: {len(stimuli)} x {len(words)} x 2 orderings = {len(stimuli) * len(words) * 2}")
+    stim_set_label = args.stim_set or "env/default"
+    print(f"Models:      {model_names}")
+    print(f"Device:      {args.device}")
+    print(f"Ordering:    {args.ordering}")
+    print(f"Repeats:     {args.repeats}")
+    print(f"Temperature: {args.temperature}")
+    print(f"Stimuli:     {len(stimuli)} from {stim_set_label}")
+    print(f"Words:       {len(words)} ({len(words)//2} sudo + {len(words)//2} random)")
+    trials_per = len(stimuli) * len(words) * args.repeats
+    print(f"Trials per model: {len(stimuli)} x {len(words)} x {args.repeats} repeats = {trials_per}")
     print()
 
     output_path = resolve_output_path(args.output, prefix="local")
@@ -115,22 +128,29 @@ def main():
         print(f"  Loaded: {model.name}")
 
         def run_fn(images, prompt, _m=model):
-            return run_local(_m, images, prompt)
+            return run_local(_m, images, prompt, temperature=args.temperature)
 
-        for stim in stimuli:
-            for w in words:
-                word, word_type, word_length = w["name"], w["type"], w["length"]
-                print(f"  Stimulus {stim['stim_id']:>3s} (word={word}, type={word_type}, len={word_length})")
-                trial_results = run_trial(run_fn, stim, word, word_type, word_length)
-                for r in trial_results:
-                    r["model"] = model_key
-                    print(f"    {r['ordering']:15s} -> {r['raw_text']!r:10s}  choice={r['choice']}")
-                    all_results.append(r)
+        for repeat in range(1, args.repeats + 1):
+            if args.repeats > 1:
+                print(f"\n  --- Repeat {repeat}/{args.repeats} ---")
+            for stim in stimuli:
+                for w in words:
+                    word, word_type, word_length = w["name"], w["type"], w["length"]
+                    print(f"  Stimulus {stim['stim_id']:>3s} (word={word}, type={word_type}, len={word_length})")
+                    trial_results = run_trial(run_fn, stim, word, word_type, word_length,
+                                              ordering=args.ordering)
+                    for r in trial_results:
+                        r["model"] = model_key
+                        r["repeat"] = repeat
+                        r["temperature"] = args.temperature
+                        print(f"    {r['ordering']:15s} -> {r['raw_text']!r:10s}  choice={r['choice']}")
+                        all_results.append(r)
+                    # Save incrementally after each stimulus+word trial
+                    write_results(trial_results, output_path, append=True, quiet=True)
 
         model.unload()
         print(f"  Unloaded {model_key}")
 
-    write_results(all_results, output_path)
     print_summary(all_results, model_names)
 
 
