@@ -9,9 +9,57 @@ format:
 source("src/load_data.R")
 source("src/plot_model_bias.R")
 source("src/plot_stimulus_bias.R")
+source("src/plot_position_bias.R")
+source("src/plot_word_sensitivity.R")
 
 df <- load_results(get_data_path()) |> add_model_size()
 fig_dir <- get_figures_dir()
+```
+
+## Validation
+
+Before interpreting shape-bias results, we verify that models are performing the task validly. Three checks: (1) position bias — does the model track images or just pick a fixed position? (2) word sensitivity — does the model's choice change with different words? (3) word type effects — do pseudo-words vs random strings produce different patterns?
+
+### Position Bias
+
+For each model, we check whether responses are driven by image content or by position bias. For every stimulus-word pair run in both orderings (shape_first and texture_first), we test whether the model's answer follows the correct image when positions are swapped. A model that tracks the image should pick "1" when its preferred match is first and "2" when it is second.
+
+```{r fig-position-bias, fig.width=8, fig.height=5, fig.cap="Proportion of paired trials where the model tracks the correct image vs shows position bias. Models below 50% are not reliably performing the task."}
+p <- plot_position_bias_main(df)
+ggsave(file.path(fig_dir, "C_position_bias_validation.png"), p, width = 8, height = 5, dpi = 300)
+p
+```
+
+```{r fig-position-bias-stim, fig.width=10, fig.height=5, fig.cap="Image tracking rate by stimulus, broken down by model."}
+p <- plot_position_bias_by_stimulus(df)
+ggsave(file.path(fig_dir, "C_position_bias_by_stimulus.png"), p, width = 10, height = 5, dpi = 300)
+p
+```
+
+### Word Sensitivity
+
+For each (model, stimulus, ordering) group, we check whether the model gives the same choice for all words or whether different words lead to different choices. A model that always picks the same option regardless of word is "word-insensitive" — suggesting it ignores the word entirely.
+
+```{r fig-word-sensitivity, fig.width=8, fig.height=5, fig.cap="Proportion of stimulus-ordering groups where the model's choice varies across words."}
+p <- plot_word_sensitivity_main(df)
+ggsave(file.path(fig_dir, "D_word_sensitivity_validation.png"), p, width = 8, height = 5, dpi = 300)
+p
+```
+
+```{r fig-word-sensitivity-stim, fig.width=10, fig.height=5, fig.cap="Word sensitivity rate by stimulus, broken down by model."}
+p <- plot_word_sensitivity_by_stimulus(df)
+ggsave(file.path(fig_dir, "D_word_sensitivity_by_stimulus.png"), p, width = 10, height = 5, dpi = 300)
+p
+```
+
+### Word Type Effects
+
+We compare shape-bias rates between pseudo-words (word-like strings) and random strings. If a model responds differently to these two word types, it suggests linguistic processing influences its visual judgments.
+
+```{r fig-word-type, fig.width=8, fig.height=5, fig.cap="Mean shape-bias by word type (pseudo-words vs random strings) per model, with SE error bars."}
+p <- plot_word_type_effect(df)
+ggsave(file.path(fig_dir, "D_word_type_effect.png"), p, width = 8, height = 5, dpi = 300)
+p
 ```
 
 ## Shape Bias by Model
@@ -28,6 +76,48 @@ ggsave(file.path(fig_dir, "A_model_bias_supplement.png"), p, width = 8, height =
 p
 ```
 
+### By order method
+
+```{r fig-model-fixed, fig.width=8, fig.height=5, fig.cap="Shape bias — fixed (deterministic) trials only."}
+p <- plot_model_bias_main(df, order_method = "fixed")
+ggsave(file.path(fig_dir, "A_model_bias_fixed.png"), p, width = 8, height = 5, dpi = 300)
+p
+```
+
+```{r fig-model-random-method, fig.width=8, fig.height=5, fig.cap="Shape bias — randomly assigned ordering only."}
+p <- plot_model_bias_main(df, order_method = "random")
+ggsave(file.path(fig_dir, "A_model_bias_random_method.png"), p, width = 8, height = 5, dpi = 300)
+p
+```
+
+### By ordering
+
+```{r fig-model-shape-first, fig.width=8, fig.height=5, fig.cap="Shape bias — shape_first ordering only."}
+p <- plot_model_bias_main(df, ordering = "shape_first")
+ggsave(file.path(fig_dir, "A_model_bias_shape_first.png"), p, width = 8, height = 5, dpi = 300)
+p
+```
+
+```{r fig-model-texture-first, fig.width=8, fig.height=5, fig.cap="Shape bias — texture_first ordering only."}
+p <- plot_model_bias_main(df, ordering = "texture_first")
+ggsave(file.path(fig_dir, "A_model_bias_texture_first.png"), p, width = 8, height = 5, dpi = 300)
+p
+```
+
+### By word type
+
+```{r fig-model-sudo, fig.width=8, fig.height=5, fig.cap="Shape bias — pseudo-words only."}
+p <- plot_model_bias_main(df, word_type = "sudo")
+ggsave(file.path(fig_dir, "A_model_bias_sudo.png"), p, width = 8, height = 5, dpi = 300)
+p
+```
+
+```{r fig-model-random, fig.width=8, fig.height=5, fig.cap="Shape bias — random strings only."}
+p <- plot_model_bias_main(df, word_type = "random")
+ggsave(file.path(fig_dir, "A_model_bias_random.png"), p, width = 8, height = 5, dpi = 300)
+p
+```
+
 ## Shape Bias by Stimulus
 
 ```{r fig-stim-main, fig.width=10, fig.height=5, fig.cap="Proportion of shape choices by stimulus, averaged across models. Dashed line = chance (0.5)."}
@@ -39,5 +129,47 @@ p
 ```{r fig-stim-supplement, fig.width=10, fig.height=5, fig.cap="Full response breakdown (shape / texture / unclear) by stimulus."}
 p <- plot_stimulus_bias_supplement(df)
 ggsave(file.path(fig_dir, "B_stimulus_bias_supplement.png"), p, width = 10, height = 5, dpi = 300)
+p
+```
+
+### By order method
+
+```{r fig-stim-fixed, fig.width=10, fig.height=5, fig.cap="Stimulus bias — fixed (deterministic) trials only."}
+p <- plot_stimulus_bias_main(df, order_method = "fixed")
+ggsave(file.path(fig_dir, "B_stimulus_bias_fixed.png"), p, width = 10, height = 5, dpi = 300)
+p
+```
+
+```{r fig-stim-random-method, fig.width=10, fig.height=5, fig.cap="Stimulus bias — randomly assigned ordering only."}
+p <- plot_stimulus_bias_main(df, order_method = "random")
+ggsave(file.path(fig_dir, "B_stimulus_bias_random_method.png"), p, width = 10, height = 5, dpi = 300)
+p
+```
+
+### By ordering
+
+```{r fig-stim-shape-first, fig.width=10, fig.height=5, fig.cap="Stimulus bias — shape_first ordering only."}
+p <- plot_stimulus_bias_main(df, ordering = "shape_first")
+ggsave(file.path(fig_dir, "B_stimulus_bias_shape_first.png"), p, width = 10, height = 5, dpi = 300)
+p
+```
+
+```{r fig-stim-texture-first, fig.width=10, fig.height=5, fig.cap="Stimulus bias — texture_first ordering only."}
+p <- plot_stimulus_bias_main(df, ordering = "texture_first")
+ggsave(file.path(fig_dir, "B_stimulus_bias_texture_first.png"), p, width = 10, height = 5, dpi = 300)
+p
+```
+
+### By word type
+
+```{r fig-stim-sudo, fig.width=10, fig.height=5, fig.cap="Stimulus bias — pseudo-words only."}
+p <- plot_stimulus_bias_main(df, word_type = "sudo")
+ggsave(file.path(fig_dir, "B_stimulus_bias_sudo.png"), p, width = 10, height = 5, dpi = 300)
+p
+```
+
+```{r fig-stim-random, fig.width=10, fig.height=5, fig.cap="Stimulus bias — random strings only."}
+p <- plot_stimulus_bias_main(df, word_type = "random")
+ggsave(file.path(fig_dir, "B_stimulus_bias_random.png"), p, width = 10, height = 5, dpi = 300)
 p
 ```

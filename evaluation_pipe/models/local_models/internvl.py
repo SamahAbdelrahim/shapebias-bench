@@ -44,9 +44,16 @@ class InternVL(BaseVLM):
         max_new_tokens: int = 128,
         temperature: float = 0.0,
     ) -> ModelResponse:
-        # Build multi-image chat message
-        content: list[dict] = [{"type": "image", "image": img} for img in images]
-        content.append({"type": "text", "text": prompt})
+        # Build multi-image chat message with explicit A/B labels
+        content: list[dict] = [
+            {"type": "text", "text": "Reference image:"},
+            {"type": "image", "image": images[0]},
+            {"type": "text", "text": "Image 1:"},
+            {"type": "image", "image": images[1]},
+            {"type": "text", "text": "Image 2:"},
+            {"type": "image", "image": images[2]},
+            {"type": "text", "text": prompt},
+        ]
         messages = [{"role": "user", "content": content}]
 
         inputs = self._processor.apply_chat_template(

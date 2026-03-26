@@ -60,6 +60,27 @@ load_results <- function(csv_path) {
   df
 }
 
+# ---------------------------------------------------------------------------
+# Filtering helpers
+# ---------------------------------------------------------------------------
+#' Filter trials by ordering, order_method, and/or word_type
+filter_trials <- function(df, ordering = NULL, order_method = NULL, word_type = NULL) {
+  if (!is.null(ordering))     df <- df |> filter(ordering %in% !!ordering)
+  if (!is.null(order_method)) df <- df |> filter(order_method %in% !!order_method)
+  if (!is.null(word_type))    df <- df |> filter(word_type %in% !!word_type)
+  df
+}
+
+#' Build a subtitle string describing active filters (NULL if no filters)
+make_filter_subtitle <- function(ordering = NULL, order_method = NULL, word_type = NULL) {
+  parts <- c()
+  if (!is.null(ordering))     parts <- c(parts, paste("Ordering:", paste(ordering, collapse = ", ")))
+  if (!is.null(order_method)) parts <- c(parts, paste("Method:", paste(order_method, collapse = ", ")))
+  if (!is.null(word_type))    parts <- c(parts, paste("Word type:", paste(word_type, collapse = ", ")))
+  if (length(parts) == 0) return(NULL)
+  paste(parts, collapse = " | ")
+}
+
 #' Add model size info and create ordered factor for plotting
 add_model_size <- function(df) {
   size_df <- tibble(

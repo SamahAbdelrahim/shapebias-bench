@@ -49,8 +49,16 @@ class _Qwen35Base(BaseVLM):
         messages: list[dict] = [
             {"role": "system", "content": [{"type": "text", "text": self._system_prompt}]},
         ]
-        content: list[dict] = [{"type": "image", "image": img} for img in images]
-        content.append({"type": "text", "text": prompt})
+        # Build multi-image chat message with explicit A/B labels
+        content: list[dict] = [
+            {"type": "text", "text": "Reference image:"},
+            {"type": "image", "image": images[0]},
+            {"type": "text", "text": "Image 1:"},
+            {"type": "image", "image": images[1]},
+            {"type": "text", "text": "Image 2:"},
+            {"type": "image", "image": images[2]},
+            {"type": "text", "text": prompt},
+        ]
         messages.append({"role": "user", "content": content})
 
         # Two-step tokenization: the processor's apply_chat_template does not

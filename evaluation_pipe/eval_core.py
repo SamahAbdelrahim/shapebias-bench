@@ -50,8 +50,8 @@ WORD_PAIRS = [
 # ===========================================================================
 PROMPT_TEMPLATE = (
     "The first image is a {word}. "
-    "Which of the following two images (A or B) is also a {word}? "
-    "Answer with just 'A' or 'B'."
+    "Which of the following two images (1 or 2) is also a {word}? "
+    "Answer with just '1' or '2'."
 )
 
 # ===========================================================================
@@ -59,7 +59,7 @@ PROMPT_TEMPLATE = (
 # ===========================================================================
 CSV_FIELDS = [
     "model", "model_name", "stim_id", "word", "word_type", "word_length",
-    "ordering", "a_is", "b_is", "raw_text", "parsed_answer", "choice",
+    "ordering", "order_method", "a_is", "b_is", "raw_text", "parsed_answer", "choice",
     "generation_time_s", "num_tokens_generated", "attempts",
     "repeat", "temperature",
 ]
@@ -111,15 +111,14 @@ def load_stimuli(stim_set: str | None = None,
 # Answer parsing with retry
 # ---------------------------------------------------------------------------
 def parse_answer(raw_text: str) -> str | None:
-    upper = raw_text.upper()
-    has_a = "A" in upper
-    has_b = "B" in upper
-    if has_a and has_b:
+    has_1 = "1" in raw_text
+    has_2 = "2" in raw_text
+    if has_1 and has_2:
         return None
-    if has_a:
-        return "A"
-    if has_b:
-        return "B"
+    if has_1:
+        return "1"
+    if has_2:
+        return "2"
     return None
 
 
@@ -165,16 +164,18 @@ def run_trial(run_fn, stimulus: dict, word: str, word_type: str,
         configs = list(orderings_config["both"])
         random.shuffle(configs)
         configs = configs[:1]  # pick one at random
+        order_method = "random"
     else:
         configs = orderings_config[ordering]
+        order_method = "fixed"
 
     results = []
     for ord_name, img_a, img_b, a_is, b_is in configs:
         res = run_with_retry(run_fn, [ref, img_a, img_b], prompt)
         answer = res.get("parsed_answer")
-        if answer == "A":
+        if answer == "1":
             choice = a_is
-        elif answer == "B":
+        elif answer == "2":
             choice = b_is
         else:
             choice = "unclear"
@@ -185,6 +186,7 @@ def run_trial(run_fn, stimulus: dict, word: str, word_type: str,
             "word_type": word_type,
             "word_length": word_length,
             "ordering": ord_name,
+            "order_method": order_method,
             "a_is": a_is,
             "b_is": b_is,
             "choice": choice,

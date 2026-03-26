@@ -76,8 +76,8 @@ def main():
     parser.add_argument("--device", default=DEFAULT_DEVICE,
                         help=f"Device for local models (default: {DEFAULT_DEVICE})")
     parser.add_argument("--ordering", required=True,
-                        choices=["shape_first", "texture_first", "random"],
-                        help="Trial ordering: shape_first, texture_first, or random")
+                        choices=["shape_first", "texture_first", "random", "both"],
+                        help="Trial ordering: shape_first, texture_first, random, or both")
     parser.add_argument("--repeats", type=int, default=1,
                         help="Number of repeats per trial (default: 1)")
     parser.add_argument("--temperature", type=float, default=0.0,
@@ -112,8 +112,9 @@ def main():
     print(f"Temperature: {args.temperature}")
     print(f"Stimuli:     {len(stimuli)} from {stim_set_label}")
     print(f"Words:       {len(words)} ({len(words)//2} sudo + {len(words)//2} random)")
-    trials_per = len(stimuli) * len(words) * args.repeats
-    print(f"Trials per model: {len(stimuli)} x {len(words)} x {args.repeats} repeats = {trials_per}")
+    ord_mult = 2 if args.ordering == "both" else 1
+    trials_per = len(stimuli) * len(words) * args.repeats * ord_mult
+    print(f"Trials per model: {len(stimuli)} x {len(words)} x {args.repeats} repeats x {ord_mult} orderings = {trials_per}")
     print()
 
     output_path = resolve_output_path(args.output, prefix="local")
