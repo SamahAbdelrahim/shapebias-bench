@@ -2,6 +2,7 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 library(scales)
+library(ggrepel)
 
 TRACKS_COL  <- "#4CAF50"
 BIAS_COL    <- "#F44336"
@@ -109,4 +110,43 @@ plot_position_bias_by_stimulus <- function(df) {
     ) +
     theme_minimal(base_size = 13) +
     theme(axis.text.x = element_text(size = 9))
+}
+
+#' Rank-ordered position bias: each model's stimuli sorted independently by tracking rate
+plot_position_bias_ranked <- function(df) {
+  classified <- classify_position_bias(df)
+
+  # Get all model x stim_id combinations so 0% tracking stimuli aren't dropped
+  all_combos <- classified |>
+    distinct(model_label, stim_id)
+
+  summary_df <- classified |>
+    group_by(model_label, stim_id, validity) |>
+    summarise(n = n(), .groups = "drop_last") |>
+    mutate(prop = n / sum(n)) |>
+    ungroup() |>
+    filter(validity == "tracks_image") |>
+    right_join(all_combos, by = c("model_label", "stim_id")) |>
+    mutate(prop = replace_na(prop, 0)) |>
+    group_by(model_label) |>
+    arrange(prop, .by_group = TRUE) |>
+    mutate(rank = row_number()) |>
+    ungroup()
+
+  ggplot(summary_df, aes(x = rank, y = prop, colour = model_label, group = model_label)) +
+    geom_hline(yintercept = 0.5, linetype = "dashed", colour = "grey40") +
+    geom_line(linewidth = 0.6, alpha = 0.6) +
+    geom_point(size = 2.5) +
+    geom_text_repel(aes(label = stim_id), size = 2.3, show.legend = FALSE,
+                    max.overlaps = 20, segment.size = 0.2, segment.alpha = 0.4,
+                    box.padding = 0.2, point.padding = 0.15, seed = 42) +
+    scale_y_continuous(limits = c(-0.05, 1.1), labels = label_percent()) +
+    scale_colour_brewer(palette = "Set2", name = "Model") +
+    labs(
+      x = "Stimulus rank (sorted by tracking rate per model)",
+      y = "Proportion tracking image",
+      title = "Rank-ordered image tracking by model",
+      subtitle = "Each model's stimuli sorted independently; labels = stimulus ID"
+    ) +
+    theme_minimal(base_size = 13)
 }

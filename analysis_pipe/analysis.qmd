@@ -36,6 +36,12 @@ ggsave(file.path(fig_dir, "C_position_bias_by_stimulus.png"), p, width = 10, hei
 p
 ```
 
+```{r fig-position-bias-ranked, fig.width=10, fig.height=5, fig.cap="Rank-ordered image tracking rate by model. Each model's stimuli sorted independently by tracking rate. Labels show stimulus ID."}
+p <- plot_position_bias_ranked(df)
+ggsave(file.path(fig_dir, "C_position_bias_ranked.png"), p, width = 10, height = 5, dpi = 300)
+p
+```
+
 ### Word Sensitivity
 
 For each (model, stimulus, ordering) group, we check whether the model gives the same choice for all words or whether different words lead to different choices. A model that always picks the same option regardless of word is "word-insensitive" — suggesting it ignores the word entirely.
@@ -59,6 +65,22 @@ We compare shape-bias rates between pseudo-words (word-like strings) and random 
 ```{r fig-word-type, fig.width=8, fig.height=5, fig.cap="Mean shape-bias by word type (pseudo-words vs random strings) per model, with SE error bars."}
 p <- plot_word_type_effect(df)
 ggsave(file.path(fig_dir, "D_word_type_effect.png"), p, width = 8, height = 5, dpi = 300)
+p
+```
+
+### Shape Bias by Word
+
+We break down shape bias for each individual word, faceted by word type (pseudo-words vs random strings). Words are ordered by length to reflect the length-matched pairs design.
+
+```{r fig-word-bias, fig.width=10, fig.height=5, fig.cap="Shape bias for each word, faceted by word type. Words ordered by length. Dashed line = chance (50%)."}
+p <- plot_word_bias(df)
+ggsave(file.path(fig_dir, "D_word_bias_by_word.png"), p, width = 10, height = 5, dpi = 300)
+p
+```
+
+```{r fig-word-bias-by-model, fig.width=10, fig.height=5, fig.cap="Shape bias for each word broken down by model. Words ordered by length. Dashed line = chance (50%)."}
+p <- plot_word_bias_by_model(df)
+ggsave(file.path(fig_dir, "D_word_bias_by_word_by_model.png"), p, width = 10, height = 5, dpi = 300)
 p
 ```
 

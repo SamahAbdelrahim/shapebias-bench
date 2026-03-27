@@ -121,3 +121,73 @@ plot_word_type_effect <- function(df) {
     theme_minimal(base_size = 13) +
     theme(axis.text.x = element_text(size = 10))
 }
+
+#' Shape bias by individual word, faceted by word type
+plot_word_bias <- function(df) {
+  summary_df <- df |>
+    filter(choice %in% c("shape", "texture")) |>
+    mutate(word_length = nchar(word)) |>
+    group_by(word, word_type, word_length) |>
+    summarise(
+      n = n(),
+      shape_prop = mean(choice == "shape"),
+      se = sqrt(shape_prop * (1 - shape_prop) / n),
+      .groups = "drop"
+    ) |>
+    mutate(
+      word = reorder(word, word_length),
+      word_type_label = ifelse(word_type == "sudo", "Pseudo-words", "Random strings")
+    )
+
+  ggplot(summary_df, aes(x = word, y = shape_prop)) +
+    geom_hline(yintercept = 0.5, linetype = "dashed", colour = "grey40") +
+    geom_point(colour = "#6B8E23", size = 3) +
+    geom_errorbar(
+      aes(ymin = pmax(shape_prop - se, 0), ymax = pmin(shape_prop + se, 1)),
+      width = 0.2, colour = "#6B8E23"
+    ) +
+    geom_text(aes(label = sprintf("%.0f%%", shape_prop * 100)),
+              vjust = -1.2, size = 3.2) +
+    facet_wrap(~ word_type_label, scales = "free_x") +
+    scale_y_continuous(limits = c(0, 1.08), labels = label_percent()) +
+    labs(
+      x = "Word",
+      y = "Proportion shape choice",
+      title = "Shape bias by word",
+      subtitle = "Averaged across all models and stimuli"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(axis.text.x = element_text(size = 10, angle = 30, hjust = 1))
+}
+
+#' Shape bias by individual word, broken down by model, faceted by word type
+plot_word_bias_by_model <- function(df) {
+  summary_df <- df |>
+    filter(choice %in% c("shape", "texture")) |>
+    mutate(word_length = nchar(word)) |>
+    group_by(model_label, word, word_type, word_length) |>
+    summarise(
+      n = n(),
+      shape_prop = mean(choice == "shape"),
+      .groups = "drop"
+    ) |>
+    mutate(
+      word = reorder(word, word_length),
+      word_type_label = ifelse(word_type == "sudo", "Pseudo-words", "Random strings")
+    )
+
+  ggplot(summary_df, aes(x = word, y = shape_prop, colour = model_label)) +
+    geom_hline(yintercept = 0.5, linetype = "dashed", colour = "grey40") +
+    geom_point(size = 2.5, position = position_dodge(width = 0.5)) +
+    facet_wrap(~ word_type_label, scales = "free_x") +
+    scale_y_continuous(limits = c(0, 1), labels = label_percent()) +
+    scale_colour_brewer(palette = "Set2", name = "Model") +
+    labs(
+      x = "Word",
+      y = "Proportion shape choice",
+      title = "Shape bias by word and model",
+      subtitle = "Per-model breakdown; words ordered by length"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(axis.text.x = element_text(size = 10, angle = 30, hjust = 1))
+}
