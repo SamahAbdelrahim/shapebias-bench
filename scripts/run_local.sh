@@ -6,7 +6,7 @@ MODELS="smolvlm internvl qwen3-vl-2b qwen3-vl-4b qwen3.5-0.8b qwen3.5-4b" # spac
 REPEATS=1 # number of passses through the data for each ordering
 TEMPERATURE=0.0 # 0 is deterministic, higher values add more randomness
 RESULTS_DIR="results" # directory to save results in
-OUTPUT="${RESULTS_DIR}/local_eval.csv" # output file for results
+OUTPUT="${RESULTS_DIR}/data/local_eval.csv" # output file for results
 
 # Fresh output file
 rm -f "$OUTPUT"
