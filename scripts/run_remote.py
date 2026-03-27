@@ -2,30 +2,37 @@
 """Shape-bias evaluation for remote (API-based) VLMs.
 
 Usage:
-    # Run a single model
-    python scripts/run_remote.py --models qwen3.5-9b
+    # Run a single model with one ordering
+    python scripts/run_remote.py --models qwen3.5-9b --ordering shape_first
 
     # Run multiple models
-    python scripts/run_remote.py --models qwen3.5-9b llama4-scout
+    python scripts/run_remote.py --models qwen3.5-9b llama4-scout --ordering both
 
     # Run all remote models
-    python scripts/run_remote.py --models all
+    python scripts/run_remote.py --models all --ordering both
 
-    # Limit stimuli count
-    python scripts/run_remote.py --models qwen3.5-9b --num-stimuli 5
+    # Multiple repeats with temperature
+    python scripts/run_remote.py --models qwen3.5-9b --ordering shape_first --repeats 3 --temperature 0.7
 
-    # Specify output
-    python scripts/run_remote.py --models qwen3.5-9b -o results/my_run.csv
+    # Control parallelism
+    python scripts/run_remote.py --models qwen3.5-9b --ordering both --workers 10
+
+    # Append results to existing CSV
+    python scripts/run_remote.py --models qwen3.5-9b --ordering shape_first -o results/run.csv
+    python scripts/run_remote.py --models qwen3.5-9b --ordering texture_first -o results/run.csv
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
+import csv
 import os
 import random
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 from pathlib import Path
 
@@ -55,7 +62,7 @@ load_dotenv(ENV_PATH)
 # ===========================================================================
 REMOTE_MODELS = {
     "qwen3.5-9b":       {"provider": "huggingface",      "model_id": "Qwen/Qwen3.5-9B"},
-    "qwen3.5-27b":      {"provider": "huggingface",      "model_id": "Qwen/Qwen3.5-27B"},
+    "qwen3.5-27b":      {"provider": "huggingface",      "model_id": "Qwen/Qwen3.5-27B:featherless-ai"},
     "qwen3.5-35b-a3b":  {"provider": "huggingface",      "model_id": "Qwen/Qwen3.5-35B-A3B"},
     "qwen3.5-122b-a10b":{"provider": "huggingface",      "model_id": "Qwen/Qwen3.5-122B-A10B"},
     "llama4-scout":     {"provider": "huggingface-groq",  "model_id": "meta-llama/llama-4-scout-17b-16e-instruct"},
@@ -97,17 +104,17 @@ def run_remote(model_name: str, images: list[Image.Image], prompt: str) -> dict:
     base_url = PROVIDER_BASE_URLS[cfg["provider"]]
     hf_token = os.environ.get("HUGGING_FACE") or os.environ.get("HF_API_TOKEN")
 
-    client = OpenAI(api_key=hf_token, base_url=base_url)
+    client = OpenAI(api_key=hf_token, base_url=base_url, timeout=60.0)
     messages = build_messages(images, prompt)
 
     # Disable thinking mode for Qwen3.5 models to avoid wasting tokens.
-    # Also bump max_tokens as a safety net — if thinking isn't fully
-    # disabled by the provider, the thinking tokens eat into the budget.
+    # Keep max_tokens low (128) to cap runaway thinking if the provider
+    # ignores the disable flag — better to get a truncated/empty response
+    # and retry than to burn thousands of thinking tokens.
     extra = {}
     max_tok = MAX_TOKENS_REMOTE
     if "qwen" in cfg["model_id"].lower():
         extra["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
-        max_tok = max(max_tok, 8192)
 
     start = time.perf_counter()
     response = client.chat.completions.create(
@@ -138,6 +145,17 @@ def main():
     parser = argparse.ArgumentParser(description="Run shape-bias evaluation (remote API models)")
     parser.add_argument("--models", nargs="+", required=True,
                         help="Model names to evaluate. Use 'all' for all remote models.")
+    parser.add_argument("--ordering", required=True,
+                        choices=["shape_first", "texture_first", "random", "both"],
+                        help="Trial ordering: shape_first, texture_first, random, or both")
+    parser.add_argument("--repeats", type=int, default=1,
+                        help="Number of repeats per trial (default: 1)")
+    parser.add_argument("--temperature", type=float, default=0.0,
+                        help="Sampling temperature (default: 0.0 = greedy)")
+    parser.add_argument("--workers", type=int, default=10,
+                        help="Number of parallel workers (default: 10)")
+    parser.add_argument("--resume", default=None, metavar="CSV",
+                        help="Resume from a partial CSV — skip already-completed trials and append new results")
     add_common_args(parser)
     args = parser.parse_args()
 
@@ -157,34 +175,107 @@ def main():
     # Load stimuli and words
     words = load_words()
     stimuli = load_stimuli(args.stim_set, args.num_stimuli)
-    print(f"Models:  {model_names}")
-    print(f"Stimuli: {len(stimuli)} from {args.stim_set}")
-    print(f"Words:   {len(words)} ({len(words)//2} sudo + {len(words)//2} random)")
-    print(f"Trials per model: {len(stimuli)} x {len(words)} x 2 orderings = {len(stimuli) * len(words) * 2}")
+    stim_set_label = args.stim_set or "env/default"
+    ord_mult = 2 if args.ordering == "both" else 1
+    trials_per = len(stimuli) * len(words) * args.repeats * ord_mult
+
+    print(f"Models:      {model_names}")
+    print(f"Ordering:    {args.ordering}")
+    print(f"Repeats:     {args.repeats}")
+    print(f"Temperature: {args.temperature}")
+    print(f"Workers:     {args.workers}")
+    print(f"Stimuli:     {len(stimuli)} from {stim_set_label}")
+    print(f"Words:       {len(words)} ({len(words)//2} sudo + {len(words)//2} random)")
+    print(f"Trials per model: {len(stimuli)} x {len(words)} x {args.repeats} repeats x {ord_mult} orderings = {trials_per}")
     print()
 
-    output_path = resolve_output_path(args.output, prefix="remote")
+    # Handle --resume: load completed trials and use that CSV for appending
+    done_keys: set[tuple] = set()
+    if args.resume:
+        output_path = Path(args.resume)
+        if output_path.exists():
+            with open(output_path) as f:
+                for row in csv.DictReader(f):
+                    # Key: (model, stim_id, word, ordering, repeat)
+                    done_keys.add((
+                        row["model"], row["stim_id"], row["word"],
+                        row["ordering"], row.get("repeat", "1"),
+                    ))
+            print(f"Resuming from {output_path} — {len(done_keys)} trials already done")
+        else:
+            print(f"Warning: --resume file {output_path} not found, starting fresh")
+    else:
+        output_path = resolve_output_path(args.output, prefix="remote")
+
     all_results = []
+    write_lock = threading.Lock()
 
     for model_key in model_names:
         print(f"{'='*60}")
         print(f"Remote model: {model_key}")
         print(f"{'='*60}")
 
-        def run_fn(images, prompt, _mk=model_key):
-            return run_remote(_mk, images, prompt)
+        # Build list of tasks, skipping already-completed ones
+        tasks = []
+        skipped = 0
+        for repeat in range(1, args.repeats + 1):
+            for stim in stimuli:
+                for w in words:
+                    # Check if all orderings for this task are done
+                    if args.ordering == "both":
+                        check_ords = ["shape_first", "texture_first"]
+                    elif args.ordering == "random":
+                        check_ords = ["shape_first", "texture_first"]
+                    else:
+                        check_ords = [args.ordering]
+                    all_done = all(
+                        (model_key, stim["stim_id"], w["name"], o, str(repeat)) in done_keys
+                        for o in check_ords
+                    )
+                    if all_done:
+                        skipped += 1
+                    else:
+                        tasks.append((repeat, stim, w))
 
-        for stim in stimuli:
-            for w in words:
-                word, word_type, word_length = w["name"], w["type"], w["length"]
-                print(f"  Stimulus {stim['stim_id']:>3s} (word={word}, type={word_type}, len={word_length})")
-                trial_results = run_trial(run_fn, stim, word, word_type, word_length)
-                for r in trial_results:
-                    r["model"] = model_key
-                    print(f"    {r['ordering']:15s} -> {r['raw_text']!r:10s}  choice={r['choice']}")
-                    all_results.append(r)
+        if skipped:
+            print(f"  Skipped {skipped} already-completed tasks")
 
-    write_results(all_results, output_path)
+        completed = 0
+        total = len(tasks) * ord_mult  # total trial rows
+
+        def process_task(task):
+            repeat, stim, w = task
+            word, word_type, word_length = w["name"], w["type"], w["length"]
+
+            def run_fn(images, prompt, _mk=model_key):
+                return run_remote(_mk, images, prompt)
+
+            trial_results = run_trial(run_fn, stim, word, word_type, word_length,
+                                      ordering=args.ordering)
+            for r in trial_results:
+                r["model"] = model_key
+                r["repeat"] = repeat
+                r["temperature"] = args.temperature
+            return trial_results
+
+        with ThreadPoolExecutor(max_workers=args.workers) as executor:
+            future_to_task = {executor.submit(process_task, t): t for t in tasks}
+
+            for future in as_completed(future_to_task):
+                trial_results = future.result()
+                with write_lock:
+                    for r in trial_results:
+                        print(f"  Stim {r['stim_id']:>3s} word={r['word']:12s} "
+                              f"{r['ordering']:15s} -> {r['raw_text']!r:10s}  choice={r['choice']}")
+                        all_results.append(r)
+                    completed += len(trial_results)
+                    # Incremental save
+                    write_results(trial_results, output_path, append=True, quiet=True)
+
+                    # Progress
+                    print(f"  [{completed}/{total}] done")
+
+    print(f"\nAll results saved to {output_path}")
     print_summary(all_results, model_names)
 
 

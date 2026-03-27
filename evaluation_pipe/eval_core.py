@@ -50,8 +50,8 @@ WORD_PAIRS = [
 # ===========================================================================
 PROMPT_TEMPLATE = (
     "The first image is a {word}. "
-    "Which of the following two images (Image 1 or Image 2) is also a {word}? "
-    "Answer with just 'Image 1' or 'Image 2'."
+    "Which of the following two images (1 or 2) is also a {word}? "
+    "Your response must be exactly one character: 1 or 2. No other text."
 )
 
 # ===========================================================================
@@ -123,8 +123,13 @@ def parse_answer(raw_text: str) -> str | None:
 
 
 def run_with_retry(run_fn, images: list[Image.Image], prompt: str) -> dict:
+    result = None
     for attempt in range(1, MAX_RETRIES + 1):
-        result = run_fn(images, prompt)
+        try:
+            result = run_fn(images, prompt)
+        except Exception as e:
+            print(f"    [retry {attempt}/{MAX_RETRIES}] error: {e}")
+            continue
         answer = parse_answer(result["raw_text"])
         if answer is not None:
             result["parsed_answer"] = answer
@@ -132,6 +137,8 @@ def run_with_retry(run_fn, images: list[Image.Image], prompt: str) -> dict:
             return result
         print(f"    [retry {attempt}/{MAX_RETRIES}] ambiguous/empty: {result['raw_text']!r}")
 
+    if result is None:
+        result = {"raw_text": "", "generation_time_s": 0, "model_name": "", "num_tokens_generated": 0}
     result["parsed_answer"] = None
     result["attempts"] = MAX_RETRIES
     return result
