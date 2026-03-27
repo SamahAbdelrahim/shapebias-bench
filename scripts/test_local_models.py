@@ -25,10 +25,9 @@ def make_dummy_images() -> list[Image.Image]:
 
 
 PROMPT = (
-    "Look at the reference image (first image). "
-    "Which of the two images (A = second image, B = third image) "
-    "shows an object that belongs to the same category as the reference? "
-    "Answer with just A or B."
+    "The first image is a shiple. "
+    "Which of the following two images (Image 1 or Image 2) is also a shiple? "
+    "Answer with just 'Image 1' or 'Image 2'."
 )
 
 MODELS_TO_TEST = ["smolvlm", "internvl", "tinyllava"]

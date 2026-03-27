@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ── Hardcoded configuration ──
-MODELS="smolvlm qwen3-vl-4b" # space-separated model names to evaluate (use "all" for all registered models)
+MODELS="smolvlm internvl qwen3-vl-2b qwen3-vl-4b qwen3.5-0.8b qwen3.5-4b" # space-separated model names to evaluate (use "all" for all registered models)
 REPEATS=1 # number of passses through the data for each ordering
 TEMPERATURE=0.0 # 0 is deterministic, higher values add more randomness
 RESULTS_DIR="results" # directory to save results in

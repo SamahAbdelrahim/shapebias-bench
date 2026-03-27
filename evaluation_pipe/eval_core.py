@@ -50,8 +50,8 @@ WORD_PAIRS = [
 # ===========================================================================
 PROMPT_TEMPLATE = (
     "The first image is a {word}. "
-    "Which of the following two images (1 or 2) is also a {word}? "
-    "Answer with just '1' or '2'."
+    "Which of the following two images (Image 1 or Image 2) is also a {word}? "
+    "Answer with just 'Image 1' or 'Image 2'."
 )
 
 # ===========================================================================
