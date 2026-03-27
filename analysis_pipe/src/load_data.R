@@ -38,7 +38,7 @@ get_figures_dir <- function() {
 
 #' Get the default CSV data path
 get_data_path <- function(filename = "local_eval.csv") {
-  file.path(get_results_dir(), filename)
+  file.path(get_results_dir(), "data", filename)
 }
 
 # Model sizes in billions of parameters
