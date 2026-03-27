@@ -18,7 +18,7 @@ classify_position_bias <- function(df) {
   paired <- df |>
     filter(ordering %in% c("shape_first", "texture_first"),
            order_method == "deterministic") |>
-    select(model, model_label, stim_id, word, ordering, parsed_answer) |>
+    select(model, model_label, model_family, stim_id, word, ordering, parsed_answer) |>
     pivot_wider(names_from = ordering, values_from = parsed_answer,
                 values_fn = list)
 
@@ -53,7 +53,7 @@ plot_position_bias_main <- function(df) {
   classified <- classify_position_bias(df)
 
   summary_df <- classified |>
-    group_by(model_label, validity) |>
+    group_by(model_label, model_family, validity) |>
     summarise(n = n(), .groups = "drop_last") |>
     mutate(prop = n / sum(n), total = sum(n)) |>
     ungroup()
@@ -62,6 +62,9 @@ plot_position_bias_main <- function(df) {
   label_df <- summary_df |>
     filter(validity == "tracks_image") |>
     select(model_label, prop)
+
+  # Build axis color vector matching factor level order
+  axis_colors <- FAMILY_COLORS[MODEL_FAMILIES[sub("\\n.*", "", levels(summary_df$model_label))]]
 
   ggplot(summary_df, aes(x = model_label, y = prop, fill = validity)) +
     geom_col(width = 0.7) +
@@ -83,7 +86,8 @@ plot_position_bias_main <- function(df) {
       subtitle = "Do models track the correct image when positions are swapped?"
     ) +
     theme_minimal(base_size = 13) +
-    theme(axis.text.x = element_text(size = 10))
+    theme(axis.text.x = element_text(size = 9, angle = 45, hjust = 1,
+                                     colour = axis_colors))
 }
 
 #' Supplementary: position bias broken down by stimulus
@@ -102,7 +106,7 @@ plot_position_bias_by_stimulus <- function(df) {
     geom_hline(yintercept = 0.5, linetype = "dashed", colour = "grey40") +
     geom_point(size = 2.5, position = position_dodge(width = 0.5)) +
     scale_y_continuous(limits = c(0, 1), labels = label_percent()) +
-    scale_colour_brewer(palette = "Set2", name = "Model") +
+    scale_colour_viridis_d(name = "Model") +
     labs(
       x = "Stimulus ID",
       y = "Proportion tracking image",
@@ -141,7 +145,7 @@ plot_position_bias_ranked <- function(df) {
                     max.overlaps = 20, segment.size = 0.2, segment.alpha = 0.4,
                     box.padding = 0.2, point.padding = 0.15, seed = 42) +
     scale_y_continuous(limits = c(-0.05, 1.1), labels = label_percent()) +
-    scale_colour_brewer(palette = "Set2", name = "Model") +
+    scale_colour_viridis_d(name = "Model") +
     labs(
       x = "Stimulus rank (sorted by tracking rate per model)",
       y = "Proportion tracking image",

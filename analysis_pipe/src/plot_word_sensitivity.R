@@ -13,7 +13,7 @@ INSENSITIVE_COL <- "#607D8B"
 compute_word_sensitivity <- function(df) {
   df |>
     filter(choice %in% c("shape", "texture")) |>
-    group_by(model, model_label, stim_id, ordering) |>
+    group_by(model, model_label, model_family, stim_id, ordering) |>
     summarise(
       n_words       = n(),
       unique_choices = n_distinct(choice),
@@ -29,7 +29,7 @@ plot_word_sensitivity_main <- function(df) {
   ws <- compute_word_sensitivity(df)
 
   summary_df <- ws |>
-    group_by(model_label, word_sensitive) |>
+    group_by(model_label, model_family, word_sensitive) |>
     summarise(n = n(), .groups = "drop_last") |>
     mutate(prop = n / sum(n)) |>
     ungroup()
@@ -38,6 +38,9 @@ plot_word_sensitivity_main <- function(df) {
   label_df <- summary_df |>
     filter(word_sensitive == "word-sensitive") |>
     select(model_label, prop)
+
+  # Build axis color vector matching factor level order
+  axis_colors <- FAMILY_COLORS[MODEL_FAMILIES[sub("\\n.*", "", levels(summary_df$model_label))]]
 
   ggplot(summary_df, aes(x = model_label, y = prop, fill = word_sensitive)) +
     geom_col(width = 0.7) +
@@ -58,7 +61,8 @@ plot_word_sensitivity_main <- function(df) {
       subtitle = "Does the model's choice change when different words are used?"
     ) +
     theme_minimal(base_size = 13) +
-    theme(axis.text.x = element_text(size = 10))
+    theme(axis.text.x = element_text(size = 9, angle = 45, hjust = 1,
+                                     colour = axis_colors))
 }
 
 #' By-stimulus: word sensitivity rate per stimulus, coloured by model
@@ -77,7 +81,7 @@ plot_word_sensitivity_by_stimulus <- function(df) {
     geom_hline(yintercept = 0.5, linetype = "dashed", colour = "grey40") +
     geom_point(size = 2.5, position = position_dodge(width = 0.5)) +
     scale_y_continuous(limits = c(0, 1), labels = label_percent()) +
-    scale_colour_brewer(palette = "Set2", name = "Model") +
+    scale_colour_viridis_d(name = "Model") +
     labs(
       x = "Stimulus ID",
       y = "Proportion word-sensitive",
@@ -91,13 +95,16 @@ plot_word_sensitivity_by_stimulus <- function(df) {
 plot_word_type_effect <- function(df) {
   summary_df <- df |>
     filter(choice %in% c("shape", "texture")) |>
-    group_by(model_label, word_type) |>
+    group_by(model_label, model_family, word_type) |>
     summarise(
       n = n(),
       shape_prop = mean(choice == "shape"),
       se = sqrt(shape_prop * (1 - shape_prop) / n),
       .groups = "drop"
     )
+
+  # Build axis color vector matching factor level order
+  axis_colors <- FAMILY_COLORS[MODEL_FAMILIES[sub("\\n.*", "", levels(summary_df$model_label))]]
 
   ggplot(summary_df, aes(x = model_label, y = shape_prop, fill = word_type)) +
     geom_col(position = position_dodge(width = 0.7), width = 0.6) +
@@ -119,7 +126,8 @@ plot_word_type_effect <- function(df) {
       subtitle = "Do pseudo-words vs random strings affect model responses?"
     ) +
     theme_minimal(base_size = 13) +
-    theme(axis.text.x = element_text(size = 10))
+    theme(axis.text.x = element_text(size = 9, angle = 45, hjust = 1,
+                                     colour = axis_colors))
 }
 
 #' Shape bias by individual word, faceted by word type
@@ -181,7 +189,7 @@ plot_word_bias_by_model <- function(df) {
     geom_point(size = 2.5, position = position_dodge(width = 0.5)) +
     facet_wrap(~ word_type_label, scales = "free_x") +
     scale_y_continuous(limits = c(0, 1), labels = label_percent()) +
-    scale_colour_brewer(palette = "Set2", name = "Model") +
+    scale_colour_viridis_d(name = "Model") +
     labs(
       x = "Word",
       y = "Proportion shape choice",

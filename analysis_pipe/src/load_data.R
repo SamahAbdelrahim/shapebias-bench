@@ -43,20 +43,56 @@ get_data_path <- function(filename = "local_eval.csv") {
 
 # Model sizes in billions of parameters
 MODEL_SIZES <- c(
-  "qwen3.5-0.8b" = 0.8,
-  "internvl"     = 2,
-  "qwen3-vl-2b"  = 2,
-  "smolvlm"      = 2.2,
-  "tinyllava"    = 3.1,
-  "qwen3-vl-4b"  = 4,
-  "qwen3.5-4b"   = 4
+  "qwen3.5-0.8b"     = 0.8,
+  "internvl"          = 2,
+  "qwen3-vl-2b"      = 2,
+  "smolvlm"           = 2.2,
+  "tinyllava"         = 3.1,
+  "qwen3-vl-4b"      = 4,
+  "qwen3.5-4b"        = 4,
+  "qwen3.5-9b"        = 9,
+  "qwen3.5-27b"       = 27,
+  "qwen3.5-35b-a3b"   = 35,
+  "llama4-scout"       = 109,
+  "qwen3.5-122b-a10b" = 122
 )
 
-#' Load and clean results CSV
-load_results <- function(csv_path) {
-  df <- read_csv(csv_path, show_col_types = FALSE)
+# Model family mapping (for color-coding plots)
+MODEL_FAMILIES <- c(
+  "qwen3.5-0.8b"     = "Qwen",
+  "internvl"          = "InternVL",
+  "qwen3-vl-2b"      = "Qwen",
+  "smolvlm"           = "SmolVLM",
+  "tinyllava"         = "TinyLLaVA",
+  "qwen3-vl-4b"      = "Qwen",
+  "qwen3.5-4b"        = "Qwen",
+  "qwen3.5-9b"        = "Qwen",
+  "qwen3.5-27b"       = "Qwen",
+  "qwen3.5-35b-a3b"   = "Qwen",
+  "llama4-scout"       = "LLaMA",
+  "qwen3.5-122b-a10b" = "Qwen"
+)
+
+FAMILY_COLORS <- c(
+  "Qwen"     = "#1f77b4",
+  "InternVL" = "#ff7f0e",
+  "SmolVLM"  = "#2ca02c",
+  "TinyLLaVA"= "#9467bd",
+  "LLaMA"    = "#d62728"
+)
+
+#' Load and clean results CSV(s)
+load_results <- function(csv_paths) {
+  if (length(csv_paths) == 1) {
+    df <- read_csv(csv_paths, show_col_types = FALSE)
+  } else {
+    df <- bind_rows(lapply(csv_paths, read_csv, show_col_types = FALSE))
+  }
   df <- df |>
-    mutate(choice = factor(choice, levels = c("shape", "texture", "unclear")))
+    mutate(
+      choice = factor(choice, levels = c("shape", "texture", "unclear")),
+      order_method = ifelse(order_method == "fixed", "deterministic", order_method)
+    )
   df
 }
 
@@ -97,7 +133,8 @@ add_model_size <- function(df) {
           arrange(param_b) |>
           mutate(label = paste0(model, "\n(", param_b, "B)")) |>
           pull(label)
-      )
+      ),
+      model_family = MODEL_FAMILIES[model]
     )
   df
 }
