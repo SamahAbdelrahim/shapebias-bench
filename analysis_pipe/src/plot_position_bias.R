@@ -64,7 +64,7 @@ plot_position_bias_main <- function(df) {
     select(model_label, prop)
 
   # Build axis color vector matching factor level order
-  axis_colors <- FAMILY_COLORS[MODEL_FAMILIES[sub("\\n.*", "", levels(summary_df$model_label))]]
+  axis_colors <- FAMILY_COLORS[MODEL_FAMILIES[sub("\\n.*", "", levels(droplevels(summary_df$model_label)))]]
 
   ggplot(summary_df, aes(x = model_label, y = prop, fill = validity)) +
     geom_col(width = 0.7) +

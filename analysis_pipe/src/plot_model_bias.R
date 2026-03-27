@@ -20,7 +20,7 @@ plot_model_bias_main <- function(df, ordering = NULL, order_method = NULL, word_
     )
 
   # Build axis color vector matching factor level order
-  axis_colors <- FAMILY_COLORS[MODEL_FAMILIES[sub("\\n.*", "", levels(summary_df$model_label))]]
+  axis_colors <- FAMILY_COLORS[MODEL_FAMILIES[sub("\\n.*", "", levels(droplevels(summary_df$model_label)))]]
 
   p <- ggplot(summary_df, aes(x = model_label, y = shape_prop)) +
     geom_hline(yintercept = 0.5, linetype = "dashed", colour = "grey40") +
@@ -54,7 +54,7 @@ plot_model_bias_supplement <- function(df, ordering = NULL, order_method = NULL,
     ungroup()
 
   # Build axis color vector matching factor level order
-  axis_colors <- FAMILY_COLORS[MODEL_FAMILIES[sub("\\n.*", "", levels(summary_df$model_label))]]
+  axis_colors <- FAMILY_COLORS[MODEL_FAMILIES[sub("\\n.*", "", levels(droplevels(summary_df$model_label)))]]
 
   p <- ggplot(summary_df, aes(x = model_label, y = prop, fill = choice)) +
     geom_col(width = 0.7) +

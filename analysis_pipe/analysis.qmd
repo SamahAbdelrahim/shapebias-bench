@@ -12,7 +12,7 @@ source("src/plot_stimulus_bias.R")
 source("src/plot_position_bias.R")
 source("src/plot_word_sensitivity.R")
 
-df <- load_results(get_data_path()) |> add_model_size()
+df <- load_results(c(get_data_path("local_eval.csv"), get_data_path("remote_all_fixed.csv"))) |> add_model_size()
 fig_dir <- get_figures_dir()
 ```
 

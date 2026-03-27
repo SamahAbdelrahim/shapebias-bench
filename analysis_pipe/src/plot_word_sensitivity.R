@@ -40,7 +40,7 @@ plot_word_sensitivity_main <- function(df) {
     select(model_label, prop)
 
   # Build axis color vector matching factor level order
-  axis_colors <- FAMILY_COLORS[MODEL_FAMILIES[sub("\\n.*", "", levels(summary_df$model_label))]]
+  axis_colors <- FAMILY_COLORS[MODEL_FAMILIES[sub("\\n.*", "", levels(droplevels(summary_df$model_label)))]]
 
   ggplot(summary_df, aes(x = model_label, y = prop, fill = word_sensitive)) +
     geom_col(width = 0.7) +
@@ -104,7 +104,7 @@ plot_word_type_effect <- function(df) {
     )
 
   # Build axis color vector matching factor level order
-  axis_colors <- FAMILY_COLORS[MODEL_FAMILIES[sub("\\n.*", "", levels(summary_df$model_label))]]
+  axis_colors <- FAMILY_COLORS[MODEL_FAMILIES[sub("\\n.*", "", levels(droplevels(summary_df$model_label)))]]
 
   ggplot(summary_df, aes(x = model_label, y = shape_prop, fill = word_type)) +
     geom_col(position = position_dodge(width = 0.7), width = 0.6) +
